@@ -1,0 +1,142 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: unified360-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-opsduty}
+      POSTGRES_USER: ${DB_USER:-autointelli}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-autointelli123}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-autointelli} -d ${DB_NAME:-opsduty}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres-init/01-init-grafana-db.sh:/docker-entrypoint-initdb.d/01-init-grafana-db.sh:ro
+      - ./grafana.sql:/docker-entrypoint-initdb.d/grafana.sql:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: unified360:latest
+    container_name: unified360-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &app_env
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-change-this-secret}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-Lax}
+      DB_USER: ${DB_USER:-autointelli}
+      DB_PASSWORD: ${DB_PASSWORD:-autointelli123}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-opsduty}
+      SQLALCHEMY_DATABASE_URI: postgresql://${DB_USER:-autointelli}:${DB_PASSWORD:-autointelli123}@postgres:5432/${DB_NAME:-opsduty}
+      DATABASE_URL: postgresql://${DB_USER:-autointelli}:${DB_PASSWORD:-autointelli123}@postgres:5432/${DB_NAME:-opsduty}
+      NMS_SECRET_KEY: ${NMS_SECRET_KEY:-change-this-nms-secret}
+      GRAFANA_BASE_URL: ${GRAFANA_BASE_URL:-http://localhost:3000}
+      AUTOINTER_CACHE_DB: /app/data/.servers_cache.db
+      AUTOINTER_DESKTOP_CACHE_DB: /app/data/.desktops_cache.db
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
+      INFLUXDB_URL: ${INFLUXDB_URL:-http://influxdb:8086/query}
+      INFLUXDB_DB: ${INFLUXDB_DB:-autointelli}
+      FORTIGATE_INFLUXDB_URL: ${FORTIGATE_INFLUXDB_URL:-http://influxdb:8086/query}
+      FORTIGATE_INFLUXDB_DB: ${FORTIGATE_INFLUXDB_DB:-fortigate}
+      DESKTOP_INFLUXDB_URL: ${DESKTOP_INFLUXDB_URL:-http://influxdb:8086/query}
+      DESKTOP_INFLUXDB_DB: ${DESKTOP_INFLUXDB_DB:-end_user_monitoring}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
+      AUTO_BOOTSTRAP: ${AUTO_BOOTSTRAP:-1}
+      DB_WAIT_TIMEOUT: ${DB_WAIT_TIMEOUT:-60}
+      ITAM_DISCOVERY_POLL_SECONDS: ${ITAM_DISCOVERY_POLL_SECONDS:-30}
+      SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+    entrypoint: ["/app/docker/entrypoint-web.sh"]
+    command: ["gunicorn", "-w", "4", "-b", "0.0.0.0:5050", "app:app"]
+    ports:
+      - "5050:5050"
+    volumes:
+      - app_data:/app/data
+
+  alert:
+    image: unified360:latest
+    container_name: unified360-alert
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    environment:
+      <<: *app_env
+      AUTO_BOOTSTRAP: "0"
+    entrypoint: ["/app/docker/entrypoint-alert.sh"]
+    command: ["python", "alert_engine_service.py"]
+    volumes:
+      - app_data:/app/data
+
+  itam-discovery:
+    image: unified360:latest
+    container_name: unified360-itam-discovery
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    environment:
+      <<: *app_env
+      AUTO_BOOTSTRAP: "0"
+    entrypoint: ["/app/docker/entrypoint-alert.sh"]
+    command: ["python", "itam_discovery_service.py"]
+    volumes:
+      - app_data:/app/data
+
+  influxdb:
+    image: influxdb:1.11.8
+    container_name: unified360-influxdb
+    restart: unless-stopped
+    profiles: ["metrics"]
+    environment:
+      INFLUXDB_DB: ${INFLUXDB_DB:-autointelli}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influx_data:/var/lib/influxdb
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: unified360-prometheus
+    restart: unless-stopped
+    profiles: ["metrics"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: unified360-grafana
+    restart: unless-stopped
+    profiles: ["metrics"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  pg_data:
+  app_data:
+  influx_data:
+  prometheus_data:
+  grafana_data:

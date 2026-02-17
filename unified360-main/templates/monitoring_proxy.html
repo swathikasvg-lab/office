@@ -1,0 +1,187 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<style>
+  .stale-row { background: rgba(255, 0, 0, 0.12) !important; }
+  .stale-text { color: #c00; font-weight: 600; }
+  .active-text { color: #090; font-weight: 600; }
+  #refreshStatus { font-size: 0.85rem; color: #777; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .status-up   { background-color: #d1f5d3; color: #0a0; }
+  .status-down { background-color: #f8d7da; color: #c00; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Proxy Server Details</h1>
+  <div class="d-flex gap-3 align-items-center">
+    <span id="refreshStatus">Auto-updating…</span>
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by IP, Location, DC, Capabilities…" style="width:360px;">
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Proxy Server IP</th>
+          <th>Location</th>
+          <th>DC Name</th>
+          <th>Capabilities</th>
+          <th>Status</th>
+          <th>Last Heartbeat</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="6" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+  const refreshStatus = document.getElementById("refreshStatus");
+
+  let state = { page:1, per_page:25, q:"" };
+  let autoRefreshTimer = null;
+  let debounce;
+
+  function parseUtc(iso) {
+    if (!iso) return null;
+    if (!iso.endsWith("Z") && !iso.includes("+") && !iso.includes("-"))
+      iso += "Z";
+    return new Date(iso);
+  }
+
+  function isStale(iso) {
+    if (!iso) return true;
+    const last = parseUtc(iso);
+    return (Date.now() - last) > 3600_000; // 1 hour
+  }
+
+  async function load(showLoading=true) {
+    if (showLoading)
+      rows.innerHTML = `<tr><td colspan="6" class="text-muted py-4">Refreshing…</td></tr>`;
+
+    const qp = new URLSearchParams(state);
+
+    try {
+      const res = await fetch(`/api/proxy-servers?${qp}`);
+      const data = await res.json();
+
+      rows.innerHTML = "";
+
+      if (!data.items.length) {
+        rows.innerHTML =
+          `<tr><td colspan="6" class="text-center text-muted py-4">No results</td></tr>`;
+      }
+
+      data.items.forEach(it => {
+        const stale = isStale(it.last_heartbeat);
+
+        const lastBeat = it.last_heartbeat
+          ? parseUtc(it.last_heartbeat).toLocaleString()
+          : "—";
+
+        const capabilities = (it.capabilities || "")
+          .split(",")
+          .map(c => c.trim())
+          .filter(Boolean)
+          .map(cap => {
+            const map = {
+              "PING": "bg-success text-white",
+              "PORT": "bg-primary text-white",
+              "URL": "bg-info text-dark",
+              "SNMP": "bg-secondary text-white",
+              "IDRAC": "bg-warning text-dark"
+            };
+            const cls = map[cap.toUpperCase()] || "bg-dark text-white";
+            return `<span class="badge rounded-pill ${cls} me-1">${cap}</span>`;
+          }).join("");
+
+        const tr = document.createElement("tr");
+        if (stale) tr.classList.add("stale-row");
+
+        tr.innerHTML = `
+          <td>${it.ip_address}</td>
+          <td>${it.location || "—"}</td>
+          <td>${it.dc_name || "—"}</td>
+          <td>${capabilities}</td>
+          <td>
+            <span class="status-badge ${stale ? "status-down" : "status-up"}">
+              ${stale ? "Inactive" : "Active"}
+            </span>
+          </td>
+          <td>
+            <span class="${stale ? "stale-text" : "active-text"}">
+              ${lastBeat} ${stale ? "⚠️" : ""}
+            </span>
+          </td>
+        `;
+
+        rows.appendChild(tr);
+      });
+
+      lucide.createIcons();
+
+      pageMeta.textContent = data.total
+        ? `Page ${data.page} of ${data.pages} • ${data.total} item(s)`
+        : "No results";
+
+      prevBtn.disabled = data.page <= 1;
+      nextBtn.disabled = data.page >= data.pages;
+
+      refreshStatus.textContent =
+        "Last refreshed: " + new Date().toLocaleTimeString();
+
+    } catch (err) {
+      console.error("Proxy load error", err);
+      rows.innerHTML =
+        `<tr><td colspan="6" class="text-danger py-4">Failed to load data</td></tr>`;
+      refreshStatus.textContent = "⚠️ Error updating";
+    }
+  }
+
+  prevBtn.onclick = () => { state.page--; load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  searchInput.oninput = (e) => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 250);
+  };
+
+  load();
+
+  autoRefreshTimer = setInterval(() => load(false), 60000);
+});
+</script>
+
+{% endblock %}
+

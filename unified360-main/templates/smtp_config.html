@@ -1,0 +1,230 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">SMTP Configuration</h1>
+  <div class="d-flex gap-2">
+    <button id="addBtn" class="btn btn-info text-white" data-bs-toggle="offcanvas" data-bs-target="#drawer">
+      + Add Configuration
+    </button>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Host</th>
+          <th>Port</th>
+          <th>Security</th>
+          <th>Sender</th>
+          <th>Username</th>
+          <th>Password</th>
+          <th style="width:220px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add SMTP Configuration</h5>
+    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">SMTP Host</label>
+        <input name="host" class="form-control" placeholder="smtp.myserver.com" required>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Port</label>
+        <input name="port" type="number" min="1" max="65535" value="25" class="form-control" required>
+      </div>
+
+      <div class="col-md-8">
+        <label class="form-label">Security</label>
+        <select name="security" class="form-select">
+          <option value="None">None</option>
+          <option value="SSL">SSL</option>
+          <option value="TLS">TLS</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Sender Email (From)</label>
+        <input name="sender" type="email" class="form-control" placeholder="noreply@example.com" required>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Username (optional)</label>
+        <input name="username" class="form-control" placeholder="Leave blank for anonymous">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Password (optional)</label>
+        <input name="password" type="password" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <div id="formErrors" class="text-danger small"></div>
+      </div>
+
+      <div class="col-12 d-flex justify-content-end gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const rows = document.getElementById('rows');
+  const drawerEl = document.getElementById('drawer');
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+  const form = document.getElementById('form');
+  const formErrors = document.getElementById('formErrors');
+  const drawerTitle = document.getElementById('drawerTitle');
+  const addBtn = document.getElementById('addBtn');
+  const editIdEl = document.getElementById('editId');
+
+  let current = null;
+
+  async function loadConfig() {
+    const res = await fetch('/api/smtp-configs');
+    const data = await res.json().catch(() => ({}));
+    current = data.item || null;
+    renderTable();
+  }
+
+  function renderTable() {
+    rows.innerHTML = "";
+
+    if (!current) {
+      rows.innerHTML =
+        '<tr><td colspan="7" class="text-center text-muted py-4">No SMTP configuration found</td></tr>';
+      addBtn.disabled = false;
+      return;
+    }
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${current.host}</td>
+      <td>${current.port}</td>
+      <td>${current.security}</td>
+      <td>${current.sender}</td>
+      <td>${current.username || ""}</td>
+      <td>${current.password ? "********" : ""}</td>
+      <td>
+        <div class="d-flex gap-2 align-items-center">
+          <button class="btn btn-sm btn-light border" id="editBtn">
+            <i data-lucide="edit-3" width="16" height="16"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-primary" id="testBtn">
+            <i data-lucide="send" width="16" height="16"></i>
+          </button>
+          <button class="btn btn-sm btn-danger" id="deleteBtn">
+            <i data-lucide="trash-2" width="16" height="16"></i>
+          </button>
+        </div>
+      </td>
+    `;
+    rows.appendChild(tr);
+
+    lucide.createIcons();
+    addBtn.disabled = true;
+
+    document.getElementById("editBtn").onclick = () => {
+      drawerTitle.textContent = "Edit SMTP Configuration";
+      editIdEl.value = current.id;
+
+      form.host.value = current.host;
+      form.port.value = current.port;
+      form.security.value = current.security;
+      form.sender.value = current.sender;
+      form.username.value = current.username || "";
+      form.password.value = "";
+
+      drawer.show();
+    };
+
+    document.getElementById("testBtn").onclick = async () => {
+      const recipient = prompt("Enter recipient email for test message:");
+      if (!recipient) return;
+      const resp = await fetch('/api/smtp-configs/test', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ recipient })
+      });
+      const d = await resp.json().catch(() => ({}));
+      alert(d.ok ? d.message : (d.error || "Test failed"));
+    };
+
+    document.getElementById("deleteBtn").onclick = async () => {
+      if (!confirm("Delete SMTP configuration?")) return;
+      await fetch(`/api/smtp-configs/${current.id}`, { method: "DELETE" });
+      current = null;
+      renderTable();
+      addBtn.disabled = false;
+    };
+  }
+
+  addBtn.onclick = () => {
+    drawerTitle.textContent = "Add SMTP Configuration";
+    editIdEl.value = "";
+    form.reset();
+    form.port.value = 25;
+    form.security.value = "None";
+    formErrors.textContent = "";
+  };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    const payload = Object.fromEntries(new FormData(form).entries());
+
+    const id = editIdEl.value;
+    const url = id ? `/api/smtp-configs/${id}` : "/api/smtp-configs";
+    const method = id ? "PUT" : "POST";
+
+    const res = await fetch(url, {
+      method,
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.ok === false) {
+      formErrors.textContent =
+        data.errors
+          ? Object.entries(data.errors).map(([k,v]) => `${k}: ${v}`).join(" • ")
+          : (data.error || "Failed to save configuration");
+      return;
+    }
+
+    drawer.hide();
+    await loadConfig();
+  };
+
+  loadConfig();
+});
+</script>
+
+{% endblock %}
+

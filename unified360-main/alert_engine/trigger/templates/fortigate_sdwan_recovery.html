@@ -1,0 +1,18 @@
+<h2>Fortigate SDWAN Link Recovery</h2>
+
+<b>Firewall :</b> {{ hostname }} <br>
+<b>Link :</b> {{ link_name }} <br>
+
+<p>The link has <span style="color:green;"><b>recovered</b></span> and is now OK.</p>
+
+{% if recovered_metric %}
+<b>Recovered Metric :</b> {{ recovered_metric }} <br>
+<b>Current Value :</b> {{ recovered_value }} <br><br>
+{% endif %}
+
+<b>Recovery Time :</b> {{ alert_time_ist }} <br>
+<b>Total Downtime:</b> {{ downtime_human }} ({{ downtime_seconds }} seconds) <br><br>
+
+Regards,<br>
+Autointelli Notifications
+

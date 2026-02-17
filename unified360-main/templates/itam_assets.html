@@ -1,0 +1,1073 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-0">ITAM Inventory</h4>
+      <small class="text-muted">Unified IT/OT/Cloud asset inventory (Phase 2: always-on discovery)</small>
+      <div class="small text-muted" id="autoPolicyStatus">Auto discovery: loading...</div>
+    </div>
+    <div class="d-flex gap-2">
+      <button id="btnIntegrations" class="btn btn-sm btn-outline-dark">Cloud Integrations</button>
+      <button id="btnAutoConfig" class="btn btn-sm btn-outline-primary">Auto Discovery</button>
+      <button id="btnDiscover" class="btn btn-sm btn-primary">Run Discovery</button>
+      <button id="btnRefresh" class="btn btn-sm btn-outline-secondary">Refresh</button>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Total Assets</small>
+        <div class="h5 mb-0" id="kpiTotal">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Servers</small>
+        <div class="h5 mb-0" id="kpiServers">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Workstations</small>
+        <div class="h5 mb-0" id="kpiWorkstations">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Network Devices</small>
+        <div class="h5 mb-0" id="kpiNetwork">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Monitoring Coverage</small>
+        <div class="h5 mb-0" id="kpiCoverage">0%</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Monitoring Gaps</small>
+        <div class="h5 mb-0" id="kpiCoverageGaps">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">ITOM Binding Coverage</small>
+        <div class="h5 mb-0" id="kpiBindingCoverage">0%</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Unbound Assets</small>
+        <div class="h5 mb-0" id="kpiUnboundAssets">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Avg Data Quality</small>
+        <div class="h5 mb-0" id="kpiAvgQuality">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">High Risk Assets</small>
+        <div class="h5 mb-0" id="kpiHighRisk">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Drift Alert Assets</small>
+        <div class="h5 mb-0" id="kpiDriftAlerts">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card card-body py-2">
+        <small class="text-muted">Compliance Risk Assets</small>
+        <div class="h5 mb-0" id="kpiComplianceRisk">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex gap-2">
+      <input id="q" class="form-control form-control-sm" placeholder="Search asset, IP, hostname, serial..." />
+      <select id="assetType" class="form-select form-select-sm" style="max-width: 220px;">
+        <option value="">All Types</option>
+        <option value="server">Server</option>
+        <option value="workstation">Workstation</option>
+        <option value="network_device">Network Device</option>
+        <option value="ot_device">OT Device</option>
+        <option value="cloud_asset">Cloud Asset</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <button id="btnSearch" class="btn btn-sm btn-outline-primary">Search</button>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>IP</th>
+            <th>OS</th>
+            <th>Vendor/Model</th>
+            <th>Status</th>
+            <th>Last Seen</th>
+            <th>Sources</th>
+          </tr>
+        </thead>
+        <tbody id="tbAssets">
+          <tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1" id="itamCoverageGapsSection" style="scroll-margin-top: 80px;">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Coverage Gaps</strong>
+          <small class="text-muted" id="coverageGapSummary">Loading...</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Reasons</th>
+                <th>Suggestions</th>
+              </tr>
+            </thead>
+            <tbody id="tbCoverageGaps">
+              <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>ITOM Dependency Suggestions</strong>
+          <button id="btnApplyDepSuggestions" class="btn btn-sm btn-outline-primary">Apply Suggestions</button>
+        </div>
+        <div class="card-body py-2 border-bottom">
+          <small class="text-muted" id="depSuggestSummary">Loading...</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Parent Service</th>
+                <th>Child Service</th>
+                <th>Confidence</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tbDepSuggestions">
+              <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1" id="itamRiskDriftSection" style="scroll-margin-top: 80px;">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Top Risk Assets</strong>
+          <small class="text-muted" id="riskSummary">Loading...</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Quality</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody id="tbRiskAssets">
+              <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Drift Alerts</strong>
+          <small class="text-muted" id="driftSummary">Loading...</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Risk</th>
+                <th>Drift Flags</th>
+              </tr>
+            </thead>
+            <tbody id="tbDriftAlerts">
+              <tr><td colspan="4" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="autoDiscoveryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Auto Discovery Policy</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="autoEnabled">
+          <label class="form-check-label" for="autoEnabled">Enable always-on discovery</label>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Interval (minutes)</label>
+          <input type="number" min="5" max="1440" class="form-control" id="autoInterval" value="60">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Sources</label>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="servers_cache" id="srcServers">
+            <label class="form-check-label" for="srcServers">Servers Cache</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="desktop_cache" id="srcDesktop">
+            <label class="form-check-label" for="srcDesktop">Desktop Cache</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="snmp" id="srcSnmp">
+            <label class="form-check-label" for="srcSnmp">SNMP</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="cloud_manual" id="srcCloud">
+            <label class="form-check-label" for="srcCloud">Cloud Manual</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="cloud_aws" id="srcCloudAws">
+            <label class="form-check-label" for="srcCloudAws">Cloud AWS API</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="cloud_azure" id="srcCloudAzure">
+            <label class="form-check-label" for="srcCloudAzure">Cloud Azure API</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="cloud_gcp" id="srcCloudGcp">
+            <label class="form-check-label" for="srcCloudGcp">Cloud GCP API</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="ot_seed" id="srcOtSeed">
+            <label class="form-check-label" for="srcOtSeed">OT Seed Inventory</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="ot_modbus" id="srcOtModbus">
+            <label class="form-check-label" for="srcOtModbus">OT Modbus Collector</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="ot_bacnet" id="srcOtBacnet">
+            <label class="form-check-label" for="srcOtBacnet">OT BACnet Collector</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input src-check" type="checkbox" value="ot_opcua" id="srcOtOpcua">
+            <label class="form-check-label" for="srcOtOpcua">OT OPC-UA Collector</label>
+          </div>
+        </div>
+
+        <div class="mb-1">
+          <label class="form-label">Target Customer ID (blank = all customers)</label>
+          <input type="number" min="1" class="form-control" id="autoTargetCustomerId" placeholder="All customers">
+        </div>
+        <small class="text-muted">For tenant users, this is automatically enforced to your customer scope.</small>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnAutoRunNow">Run Now</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnAutoSave">Save Policy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="integrationsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Cloud Integration Profiles</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive border rounded mb-3">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Provider</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbIntegrations">
+              <tr><td colspan="6" class="text-center text-muted py-3">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="border rounded p-3">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <strong id="integrationFormTitle">Add Integration</strong>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnIntegrationReset">New</button>
+          </div>
+          <input type="hidden" id="integrationId">
+
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label">Provider</label>
+              <select class="form-select form-select-sm" id="integrationProvider">
+                <option value="aws">AWS</option>
+                <option value="azure">Azure</option>
+                <option value="gcp">GCP</option>
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control form-control-sm" id="integrationName" placeholder="prod-account">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Customer ID</label>
+              <input type="number" min="1" class="form-control form-control-sm" id="integrationCustomerId" placeholder="required">
+            </div>
+          </div>
+
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="integrationEnabled" checked>
+            <label class="form-check-label" for="integrationEnabled">Enabled</label>
+          </div>
+
+          <div id="cfgAws" class="mt-3">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">AWS Account ID</label>
+                <input type="text" class="form-control form-control-sm" id="awsAccountId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Role ARN</label>
+                <input type="text" class="form-control form-control-sm" id="awsRoleArn">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">External ID</label>
+                <input type="text" class="form-control form-control-sm" id="awsExternalId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Profile</label>
+                <input type="text" class="form-control form-control-sm" id="awsProfile">
+              </div>
+              <div class="col-md-12">
+                <label class="form-label">Regions (comma-separated)</label>
+                <input type="text" class="form-control form-control-sm" id="awsRegions" placeholder="us-east-1,us-west-2">
+              </div>
+            </div>
+          </div>
+
+          <div id="cfgAzure" class="mt-3 d-none">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">Subscription ID</label>
+                <input type="text" class="form-control form-control-sm" id="azureSubscriptionId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Tenant ID</label>
+                <input type="text" class="form-control form-control-sm" id="azureTenantId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Client ID</label>
+                <input type="text" class="form-control form-control-sm" id="azureClientId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Client Secret</label>
+                <input type="password" class="form-control form-control-sm" id="azureClientSecret" placeholder="leave masked value unchanged">
+              </div>
+            </div>
+          </div>
+
+          <div id="cfgGcp" class="mt-3 d-none">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">Project ID</label>
+                <input type="text" class="form-control form-control-sm" id="gcpProjectId">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Credentials File</label>
+                <input type="text" class="form-control form-control-sm" id="gcpCredentialsFile" placeholder="/path/key.json">
+              </div>
+              <div class="col-md-12">
+                <label class="form-label">Credentials JSON (optional)</label>
+                <textarea class="form-control form-control-sm" id="gcpCredentialsJson" rows="4" placeholder='{"type":"service_account", ...}'></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="small text-danger mt-2" id="integrationError"></div>
+          <div class="d-flex justify-content-end mt-3 gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btnIntegrationSave">Save Integration</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let policyState = null;
+let integrationsState = [];
+
+async function loadSummary() {
+  const r = await fetch('/api/itam/summary');
+  const js = await r.json();
+  if (!js.ok) return;
+  document.getElementById('kpiTotal').textContent = js.total_assets || 0;
+  document.getElementById('kpiServers').textContent = (js.by_type || {}).server || 0;
+  document.getElementById('kpiWorkstations').textContent = (js.by_type || {}).workstation || 0;
+  document.getElementById('kpiNetwork').textContent = (js.by_type || {}).network_device || 0;
+}
+
+async function loadCoverageSummary() {
+  const r = await fetch('/api/itam/coverage/summary');
+  const js = await r.json();
+  if (!js.ok) return;
+
+  document.getElementById('kpiCoverage').textContent = `${js.monitoring_coverage_pct || 0}%`;
+  document.getElementById('kpiCoverageGaps').textContent = js.monitoring_gap_assets || 0;
+  document.getElementById('kpiBindingCoverage').textContent = `${js.itom_binding_pct || 0}%`;
+  document.getElementById('kpiUnboundAssets').textContent = js.itom_unbound_assets || 0;
+}
+
+async function loadCoverageGaps() {
+  const r = await fetch('/api/itam/coverage/gaps?limit=20&active_only=true');
+  const js = await r.json();
+  const tb = document.getElementById('tbCoverageGaps');
+  const sm = document.getElementById('coverageGapSummary');
+  if (!js.ok) {
+    sm.textContent = 'Failed to load coverage gaps';
+    tb.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">Failed to load</td></tr>';
+    return;
+  }
+
+  const items = js.items || [];
+  sm.textContent = `${items.length} gap assets shown`;
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No coverage gaps detected</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = items.map((x) => `
+    <tr>
+      <td>${fmt(x.asset_name)}</td>
+      <td>${fmt(x.asset_type)}</td>
+      <td>${fmt((x.reasons || []).join(', '))}</td>
+      <td>${fmt((x.suggestions || []).join(', '))}</td>
+    </tr>
+  `).join('');
+}
+
+function fmtRisk(riskScore, severity) {
+  const n = Number(riskScore || 0);
+  const sev = String(severity || "none").toLowerCase();
+  return `${n} (${sev})`;
+}
+
+function renderRiskAssets(items) {
+  const tb = document.getElementById('tbRiskAssets');
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No risk signals found</td></tr>';
+    return;
+  }
+  tb.innerHTML = items.map((x) => `
+    <tr>
+      <td>${fmt(x.asset_name)}</td>
+      <td>${fmt(x.asset_type)}</td>
+      <td>${fmt(x.quality_score)}</td>
+      <td>${fmtRisk(x.risk_score, x.risk_severity)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderDriftAlerts(items) {
+  const tb = document.getElementById('tbDriftAlerts');
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No drift alerts detected</td></tr>';
+    return;
+  }
+  tb.innerHTML = items.map((x) => {
+    const flags = (x.drift_flags || []).map((f) => `${f.type}:${f.severity}`).join(', ');
+    return `
+      <tr>
+        <td>${fmt(x.asset_name)}</td>
+        <td>${fmt(x.asset_type)}</td>
+        <td>${fmtRisk(x.risk_score, x.risk_severity)}</td>
+        <td>${fmt(flags)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function loadRiskSummary() {
+  const r = await fetch('/api/itam/risk/summary?limit_assets=2000&stale_days=14');
+  const js = await r.json();
+  const sm = document.getElementById('riskSummary');
+  const driftSm = document.getElementById('driftSummary');
+  if (!js.ok) {
+    sm.textContent = 'Failed to load risk summary';
+    driftSm.textContent = 'Failed to load drift alerts';
+    renderRiskAssets([]);
+    renderDriftAlerts([]);
+    return;
+  }
+
+  const s = js.summary || {};
+  document.getElementById('kpiAvgQuality').textContent = s.avg_quality_score || 0;
+  document.getElementById('kpiHighRisk').textContent = s.high_risk_assets || 0;
+  document.getElementById('kpiDriftAlerts').textContent = s.drift_alert_assets || 0;
+  document.getElementById('kpiComplianceRisk').textContent = s.compliance_risk_assets || 0;
+
+  const top = js.top_risks || [];
+  const drifts = js.drift_alerts || [];
+  sm.textContent = `${top.length} high-priority assets shown`;
+  driftSm.textContent = `${drifts.length} drift alerts shown`;
+  renderRiskAssets(top);
+  renderDriftAlerts(drifts);
+}
+
+async function loadDependencySuggestions() {
+  const r = await fetch('/api/itam/itom/dependency-suggestions?min_confidence=70&limit=20');
+  const js = await r.json();
+  const tb = document.getElementById('tbDepSuggestions');
+  const sm = document.getElementById('depSuggestSummary');
+  if (!js.ok) {
+    sm.textContent = 'Failed to load dependency suggestions';
+    tb.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">Failed to load</td></tr>';
+    return;
+  }
+
+  const items = js.items || [];
+  sm.textContent = `${js.new_dependency_suggestions || 0} new / ${js.total_suggestions || 0} total suggestions`;
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No dependency suggestions yet</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = items.map((x) => `
+    <tr>
+      <td>${fmt(x.parent_service_name || x.parent_service_id)}</td>
+      <td>${fmt(x.child_service_name || x.child_service_id)}</td>
+      <td>${fmt(x.confidence)}</td>
+      <td>${x.already_exists ? 'exists' : 'new'}</td>
+    </tr>
+  `).join('');
+}
+
+async function applyDependencySuggestions() {
+  const btn = document.getElementById('btnApplyDepSuggestions');
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = 'Applying...';
+  try {
+    const r = await fetch('/api/itam/itom/dependency-suggestions/apply', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ min_confidence: 70, limit: 500 }),
+    });
+    const js = await r.json();
+    if (!js.ok) {
+      alert(js.error || 'Failed to apply suggestions');
+      return;
+    }
+    alert(`Created ${js.created || 0} dependencies`);
+    await loadDependencySuggestions();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+  }
+}
+
+function fmt(v) {
+  return (v === null || v === undefined || v === '') ? '-' : v;
+}
+
+function providerLabel(provider) {
+  const p = String(provider || '').toLowerCase();
+  if (p === 'aws') return 'AWS';
+  if (p === 'azure') return 'Azure';
+  if (p === 'gcp') return 'GCP';
+  return provider || '-';
+}
+
+function parseMaybeJson(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (!s.startsWith('{')) return s;
+  try {
+    const parsed = JSON.parse(s);
+    return parsed && typeof parsed === 'object' ? parsed : s;
+  } catch (_e) {
+    return s;
+  }
+}
+
+function showProviderConfig(provider) {
+  const p = String(provider || '').toLowerCase();
+  document.getElementById('cfgAws').classList.toggle('d-none', p !== 'aws');
+  document.getElementById('cfgAzure').classList.toggle('d-none', p !== 'azure');
+  document.getElementById('cfgGcp').classList.toggle('d-none', p !== 'gcp');
+}
+
+function clearIntegrationError() {
+  document.getElementById('integrationError').textContent = '';
+}
+
+function setIntegrationError(msg) {
+  document.getElementById('integrationError').textContent = msg || 'Request failed';
+}
+
+function resetIntegrationForm() {
+  document.getElementById('integrationFormTitle').textContent = 'Add Integration';
+  document.getElementById('integrationId').value = '';
+  document.getElementById('integrationProvider').value = 'aws';
+  document.getElementById('integrationName').value = '';
+  document.getElementById('integrationCustomerId').value = '';
+  document.getElementById('integrationEnabled').checked = true;
+
+  document.getElementById('awsAccountId').value = '';
+  document.getElementById('awsRoleArn').value = '';
+  document.getElementById('awsExternalId').value = '';
+  document.getElementById('awsProfile').value = '';
+  document.getElementById('awsRegions').value = '';
+
+  document.getElementById('azureSubscriptionId').value = '';
+  document.getElementById('azureTenantId').value = '';
+  document.getElementById('azureClientId').value = '';
+  document.getElementById('azureClientSecret').value = '';
+
+  document.getElementById('gcpProjectId').value = '';
+  document.getElementById('gcpCredentialsFile').value = '';
+  document.getElementById('gcpCredentialsJson').value = '';
+
+  showProviderConfig('aws');
+  clearIntegrationError();
+}
+
+function fillIntegrationForm(item) {
+  const cfg = item && item.config ? item.config : {};
+  document.getElementById('integrationFormTitle').textContent = 'Edit Integration';
+  document.getElementById('integrationId').value = item.id || '';
+  document.getElementById('integrationProvider').value = item.provider || 'aws';
+  document.getElementById('integrationName').value = item.name || '';
+  document.getElementById('integrationCustomerId').value = item.customer_id || '';
+  document.getElementById('integrationEnabled').checked = !!item.enabled;
+
+  document.getElementById('awsAccountId').value = cfg.account_id || '';
+  document.getElementById('awsRoleArn').value = cfg.role_arn || '';
+  document.getElementById('awsExternalId').value = cfg.external_id || '';
+  document.getElementById('awsProfile').value = cfg.profile || '';
+  document.getElementById('awsRegions').value = Array.isArray(cfg.regions) ? cfg.regions.join(',') : (cfg.regions || '');
+
+  document.getElementById('azureSubscriptionId').value = cfg.subscription_id || '';
+  document.getElementById('azureTenantId').value = cfg.tenant_id || '';
+  document.getElementById('azureClientId').value = cfg.client_id || '';
+  document.getElementById('azureClientSecret').value = cfg.client_secret || '';
+
+  document.getElementById('gcpProjectId').value = cfg.project_id || '';
+  document.getElementById('gcpCredentialsFile').value = cfg.credentials_file || '';
+  document.getElementById('gcpCredentialsJson').value =
+    (cfg.credentials_json && typeof cfg.credentials_json === 'object')
+      ? JSON.stringify(cfg.credentials_json)
+      : (cfg.credentials_json || '');
+
+  showProviderConfig(item.provider || 'aws');
+  clearIntegrationError();
+}
+
+function collectIntegrationPayload() {
+  const provider = document.getElementById('integrationProvider').value;
+  const name = document.getElementById('integrationName').value.trim();
+  const customerRaw = document.getElementById('integrationCustomerId').value.trim();
+  const enabled = document.getElementById('integrationEnabled').checked;
+
+  const payload = {
+    provider,
+    name,
+    customer_id: customerRaw ? Number(customerRaw) : null,
+    enabled,
+    config: {},
+  };
+
+  if (provider === 'aws') {
+    payload.config = {
+      account_id: document.getElementById('awsAccountId').value.trim(),
+      role_arn: document.getElementById('awsRoleArn').value.trim(),
+      external_id: document.getElementById('awsExternalId').value.trim(),
+      profile: document.getElementById('awsProfile').value.trim(),
+      regions: document.getElementById('awsRegions').value
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean),
+    };
+  } else if (provider === 'azure') {
+    payload.config = {
+      subscription_id: document.getElementById('azureSubscriptionId').value.trim(),
+      tenant_id: document.getElementById('azureTenantId').value.trim(),
+      client_id: document.getElementById('azureClientId').value.trim(),
+      client_secret: document.getElementById('azureClientSecret').value.trim(),
+    };
+  } else {
+    payload.config = {
+      project_id: document.getElementById('gcpProjectId').value.trim(),
+      credentials_file: document.getElementById('gcpCredentialsFile').value.trim(),
+      credentials_json: parseMaybeJson(document.getElementById('gcpCredentialsJson').value),
+    };
+  }
+
+  return payload;
+}
+
+function renderIntegrationsTable(items) {
+  const tb = document.getElementById('tbIntegrations');
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No integration profiles configured</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = items.map((x) => `
+    <tr>
+      <td>${fmt(x.name)}</td>
+      <td>${fmt(providerLabel(x.provider))}</td>
+      <td>${fmt(x.customer_name || x.customer_id)}</td>
+      <td>${x.enabled ? 'enabled' : 'disabled'}</td>
+      <td>${fmt(formatIso(x.updated_at))}</td>
+      <td>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-primary integ-edit" data-id="${x.id}">Edit</button>
+          <button type="button" class="btn btn-sm btn-outline-danger integ-del" data-id="${x.id}">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  tb.querySelectorAll('.integ-edit').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id || 0);
+      const item = integrationsState.find((x) => x.id === id);
+      if (item) fillIntegrationForm(item);
+    });
+  });
+
+  tb.querySelectorAll('.integ-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.dataset.id || 0);
+      if (!id) return;
+      if (!confirm('Delete this integration profile?')) return;
+      clearIntegrationError();
+      const r = await fetch(`/api/itam/integrations/${id}`, { method: 'DELETE' });
+      const js = await r.json();
+      if (!js.ok) {
+        setIntegrationError(js.error || 'Failed to delete integration');
+        return;
+      }
+      await loadIntegrations();
+      const currentId = Number(document.getElementById('integrationId').value || 0);
+      if (currentId === id) resetIntegrationForm();
+    });
+  });
+}
+
+async function loadIntegrations() {
+  clearIntegrationError();
+  const r = await fetch('/api/itam/integrations?include_disabled=true');
+  const js = await r.json();
+  if (!js.ok) {
+    setIntegrationError(js.error || 'Failed to load integrations');
+    document.getElementById('tbIntegrations').innerHTML =
+      '<tr><td colspan="6" class="text-danger text-center py-3">Failed to load</td></tr>';
+    return;
+  }
+  integrationsState = js.items || [];
+  renderIntegrationsTable(integrationsState);
+}
+
+async function saveIntegration() {
+  clearIntegrationError();
+  const id = Number(document.getElementById('integrationId').value || 0);
+  const payload = collectIntegrationPayload();
+  if (!payload.name) {
+    setIntegrationError('Name is required');
+    return;
+  }
+  if (!payload.customer_id) {
+    setIntegrationError('Customer ID is required');
+    return;
+  }
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `/api/itam/integrations/${id}` : '/api/itam/integrations';
+
+  const btn = document.getElementById('btnIntegrationSave');
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = 'Saving...';
+  try {
+    const r = await fetch(url, {
+      method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const js = await r.json();
+    if (!js.ok) {
+      setIntegrationError(js.error || 'Failed to save integration');
+      return;
+    }
+    await loadIntegrations();
+    fillIntegrationForm(js.item || payload);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+
+async function loadAssets() {
+  const q = document.getElementById('q').value.trim();
+  const assetType = document.getElementById('assetType').value;
+  const params = new URLSearchParams();
+  params.set('per_page', '100');
+  if (q) params.set('q', q);
+  if (assetType) params.set('asset_type', assetType);
+
+  const r = await fetch('/api/itam/assets?' + params.toString());
+  const js = await r.json();
+  const tb = document.getElementById('tbAssets');
+  if (!js.ok) {
+    tb.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-3">Failed to load inventory</td></tr>';
+    return;
+  }
+  if (!js.items.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No assets found</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = js.items.map(x => `
+    <tr>
+      <td>${fmt(x.asset_name || x.hostname)}</td>
+      <td>${fmt(x.asset_type)}</td>
+      <td>${fmt(x.primary_ip)}</td>
+      <td>${fmt(x.os_name)}</td>
+      <td>${fmt([x.vendor, x.model].filter(Boolean).join(' / '))}</td>
+      <td>${fmt(x.status)}</td>
+      <td>${fmt(x.last_seen)}</td>
+      <td>${fmt(x.source_count)}</td>
+    </tr>
+  `).join('');
+}
+
+function formatIso(iso) {
+  if (!iso) return '-';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch (_e) {
+    return iso;
+  }
+}
+
+function renderPolicyStatus() {
+  const el = document.getElementById('autoPolicyStatus');
+  if (!policyState) {
+    el.textContent = 'Auto discovery: not configured';
+    return;
+  }
+  const mode = policyState.enabled ? 'enabled' : 'disabled';
+  const interval = policyState.interval_minutes || 60;
+  const sources = (policyState.sources || []).join(', ') || '-';
+  const target = policyState.target_customer_id ? `customer ${policyState.target_customer_id}` : 'all customers';
+  const last = `${policyState.last_run_status || 'never'} @ ${formatIso(policyState.last_run_ended_at || policyState.last_run_started_at)}`;
+  el.textContent = `Auto discovery: ${mode} | every ${interval}m | ${target} | sources: ${sources} | last: ${last}`;
+}
+
+function fillPolicyForm(item) {
+  document.getElementById('autoEnabled').checked = !!item.enabled;
+  document.getElementById('autoInterval').value = item.interval_minutes || 60;
+  const selected = new Set(item.sources || []);
+  document.querySelectorAll('.src-check').forEach((cb) => {
+    cb.checked = selected.has(cb.value);
+  });
+  document.getElementById('autoTargetCustomerId').value = item.target_customer_id || '';
+}
+
+async function loadPolicy() {
+  const r = await fetch('/api/itam/discovery/policy');
+  const js = await r.json();
+  if (!js.ok) return;
+  policyState = js.item;
+  renderPolicyStatus();
+}
+
+async function savePolicy() {
+  const enabled = document.getElementById('autoEnabled').checked;
+  const interval = Number(document.getElementById('autoInterval').value || 60);
+  const sources = Array.from(document.querySelectorAll('.src-check:checked')).map((x) => x.value);
+  const targetRaw = document.getElementById('autoTargetCustomerId').value.trim();
+
+  const payload = {
+    enabled,
+    interval_minutes: interval,
+    sources,
+    target_customer_id: targetRaw ? Number(targetRaw) : null,
+  };
+
+  const r = await fetch('/api/itam/discovery/policy', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const js = await r.json();
+  if (!js.ok) {
+    alert(js.error || 'Failed to save policy');
+    return;
+  }
+  policyState = js.item;
+  renderPolicyStatus();
+  const modalEl = document.getElementById('autoDiscoveryModal');
+  bootstrap.Modal.getInstance(modalEl)?.hide();
+}
+
+async function runPolicyNow() {
+  const btn = document.getElementById('btnAutoRunNow');
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = 'Running...';
+  try {
+    const r = await fetch('/api/itam/discovery/policy/run-now', { method: 'POST' });
+    const js = await r.json();
+    if (!js.ok) {
+      alert(js.error || 'Run failed');
+      return;
+    }
+    policyState = js.policy;
+    renderPolicyStatus();
+    await loadSummary();
+    await loadCoverageSummary();
+    await loadCoverageGaps();
+    await loadRiskSummary();
+    await loadDependencySuggestions();
+    await loadAssets();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+  }
+}
+
+async function runDiscovery() {
+  const btn = document.getElementById('btnDiscover');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  try {
+    const r = await fetch('/api/itam/discovery/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sources: ['servers_cache', 'desktop_cache', 'snmp']})
+    });
+    const js = await r.json();
+    if (!js.ok) {
+      alert(js.error || 'Discovery failed');
+      return;
+    }
+    await loadSummary();
+    await loadCoverageSummary();
+    await loadCoverageGaps();
+    await loadRiskSummary();
+    await loadDependencySuggestions();
+    await loadAssets();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Discovery';
+  }
+}
+
+document.getElementById('btnSearch').addEventListener('click', loadAssets);
+document.getElementById('btnRefresh').addEventListener('click', async () => {
+  await loadSummary();
+  await loadCoverageSummary();
+  await loadCoverageGaps();
+  await loadRiskSummary();
+  await loadDependencySuggestions();
+  await loadAssets();
+  await loadPolicy();
+});
+document.getElementById('btnDiscover').addEventListener('click', runDiscovery);
+document.getElementById('btnAutoConfig').addEventListener('click', async () => {
+  await loadPolicy();
+  fillPolicyForm(policyState || {
+    enabled: false,
+    interval_minutes: 60,
+    sources: ['servers_cache', 'desktop_cache', 'snmp'],
+    target_customer_id: null,
+  });
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('autoDiscoveryModal')).show();
+});
+document.getElementById('btnAutoSave').addEventListener('click', savePolicy);
+document.getElementById('btnAutoRunNow').addEventListener('click', runPolicyNow);
+document.getElementById('btnApplyDepSuggestions').addEventListener('click', applyDependencySuggestions);
+document.getElementById('btnIntegrations').addEventListener('click', async () => {
+  await loadIntegrations();
+  resetIntegrationForm();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('integrationsModal')).show();
+});
+document.getElementById('integrationProvider').addEventListener('change', (e) => {
+  showProviderConfig(e.target.value);
+});
+document.getElementById('btnIntegrationReset').addEventListener('click', resetIntegrationForm);
+document.getElementById('btnIntegrationSave').addEventListener('click', saveIntegration);
+document.getElementById('q').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadAssets();
+});
+
+loadSummary();
+loadCoverageSummary();
+loadCoverageGaps();
+loadRiskSummary();
+loadDependencySuggestions();
+loadAssets();
+loadPolicy();
+</script>
+{% endblock %}

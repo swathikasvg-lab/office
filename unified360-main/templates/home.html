@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Autointelli - Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+</head>
+<body>
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">
+        <img src="https://www.autointelli.com/assets/img/hero-logo.webp" alt="Autointelli Logo">
+      </div>
+
+      <nav class="menu">
+        <div class="menu-group">
+          <div class="menu-title">Monitoring</div>
+          <a href="#">IDRAC Monitoring</a>
+          <a href="#">URL Monitoring</a>
+          <a href="#">SNMP Switch Monitoring</a>
+          <a href="#">Fortigate FW Monitoring</a>
+        </div>
+      
+        <div class="menu-group">
+          <div class="menu-title">Report Configuration</div>
+        </div>
+      
+        <div class="menu-group">
+          <div class="menu-title">Alert Configuration</div>
+        </div>
+      
+        <div class="menu-group">
+          <div class="menu-title">SMTP Configuration</div>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <header class="topbar">
+        <div class="user-info">
+          <span class="username">{{ session['user'] }}</span>
+          <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+      </header>
+
+      <section class="page-content">
+        <h1>Welcome, {{ session['user'] }} 👋</h1>
+        <p>Select an option from the menu to get started.</p>
+      </section>
+    </main>
+
+  </div>
+</body>
+</html>
+

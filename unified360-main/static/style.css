@@ -1,0 +1,118 @@
+/* Background styling */
+body {
+  margin: 0;
+  font-family: "Inter", "Poppins", sans-serif;
+  height: 100vh;
+  background: linear-gradient(135deg, #004e92, #000428);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Wrapper */
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Login card */
+.login-box {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+  backdrop-filter: blur(12px);
+  padding: 40px 40px;
+  width: 340px;
+  text-align: center;
+  color: #fff;
+  transition: transform 0.3s ease;
+  box-sizing: border-box;
+}
+
+.login-box:hover {
+  transform: translateY(-3px);
+}
+
+/* Brand Title */
+.brand-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #00d4ff;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+/* Login title */
+.login-box h2 {
+  margin-bottom: 25px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Input fields */
+.input-group {
+  margin-bottom: 15px;
+  width: 100%;
+}
+
+.input-group input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.input-group input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.input-group input:focus {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Button */
+.login-btn {
+  width: 100%;
+  padding: 12px 14px;
+  background: #007bff;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.login-btn:hover {
+  background: #0069d9;
+}
+
+/* Flash message */
+.flash-message {
+  margin-top: 12px;
+}
+
+.flash-message p {
+  color: #ff6b6b;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 420px) {
+  .login-box {
+    width: 90%;
+    padding: 30px 25px;
+  }
+}
+

@@ -1,0 +1,273 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Network Discovery (SNMP)</h1>
+  <span class="text-muted small">
+    Discover switches, routers, firewalls, controllers using SNMP v2c / v3
+  </span>
+</div>
+
+<div class="row g-3">
+  <!-- ================= LEFT : FORM ================= -->
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">
+        <strong>Discovery Parameters</strong>
+      </div>
+      <div class="card-body">
+        <form id="discoveryForm" class="row g-3">
+
+          <!-- Customer -->
+          <div class="col-12">
+            <label class="form-label">Customer</label>
+            <select id="customerSelect" name="customer_id" class="form-select" required></select>
+          </div>
+
+          <!-- Proxy -->
+          <div class="col-12">
+            <label class="form-label">Proxy Server</label>
+            <select id="proxySelect" name="proxy" class="form-select" required></select>
+            <div id="proxyWarn" class="text-danger small d-none">
+              No proxy servers registered. Discovery cannot run.
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Discovery Name</label>
+            <input name="name" class="form-control" placeholder="DC1 Core Network" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">IP Range / CIDR</label>
+            <input name="ip_range"
+                   class="form-control"
+                   placeholder="10.10.10.0/24 or 10.10.10.1-10.10.10.254"
+                   required>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">SNMP Version</label>
+            <select name="snmp_version" id="discSnmpVersion" class="form-select">
+              <option value="v2c" selected>v2c</option>
+              <option value="v3">v3</option>
+            </select>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Port</label>
+            <input name="port" type="number" value="161" class="form-control">
+          </div>
+
+          <!-- v2c -->
+          <div class="col-12 disc-v2c">
+            <label class="form-label">Community String</label>
+            <input name="community" type="password" class="form-control">
+          </div>
+
+          <!-- v3 -->
+          <div class="col-12 disc-v3 d-none">
+            <label class="form-label">V3 Username</label>
+            <input name="v3_username" class="form-control">
+          </div>
+
+          <div class="col-md-6 disc-v3 d-none">
+            <label class="form-label">V3 Auth Protocol</label>
+            <select name="v3_auth_protocol" class="form-select">
+              <option value="MD5">MD5</option>
+              <option value="SHA">SHA</option>
+            </select>
+          </div>
+
+          <div class="col-md-6 disc-v3 d-none">
+            <label class="form-label">V3 Auth Password</label>
+            <input name="v3_auth_password" type="password" class="form-control">
+          </div>
+
+          <div class="col-md-6 disc-v3 d-none">
+            <label class="form-label">V3 Privacy Protocol</label>
+            <select name="v3_priv_protocol" class="form-select">
+              <option value="AES">AES</option>
+              <option value="DES">DES</option>
+            </select>
+          </div>
+
+          <div class="col-md-6 disc-v3 d-none">
+            <label class="form-label">V3 Privacy Password</label>
+            <input name="v3_priv_password" type="password" class="form-control">
+          </div>
+
+          <div id="discErrors" class="text-danger small"></div>
+
+          <div class="d-flex justify-content-end mt-2">
+            <button type="submit" class="btn btn-primary">
+              <i data-lucide="radar" class="me-1"></i> Start Discovery
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT : RESULTS ================= -->
+  <div class="col-lg-8">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Discovered Devices</strong>
+        <span id="discMeta" class="text-muted small"></span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>IP Address</th>
+              <th>SysName</th>
+              <th>Description</th>
+              <th>Device Type</th>
+              <th>SNMP</th>
+            </tr>
+          </thead>
+          <tbody id="discRows">
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">
+                Run a discovery to see results here.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card-footer text-muted small">
+        Results are on-demand only. Future enhancement: save into Asset Inventory.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  lucide.createIcons();
+
+  const form = document.getElementById("discoveryForm");
+  const versionSel = document.getElementById("discSnmpVersion");
+  const v2cFields = document.querySelectorAll(".disc-v2c");
+  const v3Fields = document.querySelectorAll(".disc-v3");
+
+  const rowsEl = document.getElementById("discRows");
+  const metaEl = document.getElementById("discMeta");
+  const errorsEl = document.getElementById("discErrors");
+
+  const customerSelect = document.getElementById("customerSelect");
+  const proxySelect = document.getElementById("proxySelect");
+  const proxyWarn = document.getElementById("proxyWarn");
+
+  // ---- Toggle SNMP fields
+  function updateVersionFields() {
+    const isV3 = versionSel.value === "v3";
+    v2cFields.forEach(el => el.classList.toggle("d-none", isV3));
+    v3Fields.forEach(el => el.classList.toggle("d-none", !isV3));
+  }
+  versionSel.addEventListener("change", updateVersionFields);
+  updateVersionFields();
+
+  // ---- Load Customers
+  async function loadCustomers() {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+    customerSelect.innerHTML = '<option value="">Select Customer</option>';
+    d.items.forEach(c => {
+      customerSelect.innerHTML += `<option value="${c.cid}">${c.acct_id} — ${c.name}</option>`;
+    });
+  }
+
+  // ---- Load Proxies
+  async function loadProxies() {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+    proxySelect.innerHTML = "";
+
+    if (!d.items.length) {
+      proxyWarn.classList.remove("d-none");
+      proxySelect.disabled = true;
+      return;
+    }
+
+    proxyWarn.classList.add("d-none");
+    proxySelect.disabled = false;
+
+    d.items.forEach(p => {
+      const label = (p.location && p.dc_name)
+        ? `${p.location} : ${p.dc_name}`
+        : p.ip_address;
+      proxySelect.innerHTML += `<option value="${p.ip_address}">${label}</option>`;
+    });
+  }
+
+  // ---- Submit Discovery
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorsEl.textContent = "";
+    metaEl.textContent = "";
+
+    rowsEl.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center text-muted py-4">
+          Running discovery…
+        </td>
+      </tr>`;
+
+    const payload = Object.fromEntries(new FormData(form).entries());
+
+    try {
+      const res = await fetch("/api/discovery/snmp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        errorsEl.textContent = data.error || "Discovery failed";
+        return;
+      }
+
+      const devices = data.devices || [];
+      rowsEl.innerHTML = "";
+
+      if (!devices.length) {
+        rowsEl.innerHTML = `
+          <tr><td colspan="5" class="text-center text-muted py-4">
+            No devices discovered
+          </td></tr>`;
+        metaEl.textContent = "0 device(s) discovered";
+        return;
+      }
+
+      devices.forEach(d => {
+        rowsEl.innerHTML += `
+          <tr>
+            <td>${d.ip || ""}</td>
+            <td>${d.sys_name || ""}</td>
+            <td>${d.sys_descr || ""}</td>
+            <td>${d.device_type || ""}</td>
+            <td>${(d.snmp_version || "").toUpperCase()}</td>
+          </tr>`;
+      });
+
+      metaEl.textContent = `${devices.length} device(s) discovered`;
+
+    } catch (err) {
+      console.error(err);
+      errorsEl.textContent = "Unexpected error during discovery.";
+    }
+  });
+
+  // Init
+  loadCustomers();
+  loadProxies();
+});
+</script>
+
+{% endblock %}
+

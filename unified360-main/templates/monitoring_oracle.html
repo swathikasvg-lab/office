@@ -1,0 +1,378 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Oracle DB Monitoring</h1>
+
+  <div class="d-flex gap-2 align-items-center">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, host, service, or server…" style="width:360px;">
+
+    {% if can("edit_oracle") %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add Oracle DB
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>Host</th>
+          <th>Port</th>
+          <th>Service / PDB</th>
+          <th>Username</th>
+          <th>Monitoring Server</th>
+          <th>Status</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+{% if can("edit_oracle") %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Oracle DB</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Friendly Name</label>
+        <input name="friendly_name" class="form-control" placeholder="e.g., Finance Oracle" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Host</label>
+        <input name="host" class="form-control" placeholder="e.g., 195.201.164.158" required>
+      </div>
+
+      <div class="col-6">
+        <label class="form-label">Port</label>
+        <input name="port" type="number" value="1521" class="form-control" required>
+      </div>
+
+      <div class="col-6">
+        <label class="form-label">Service / PDB / SID</label>
+        <input name="service_name" class="form-control" placeholder="e.g., XE or XEPDB1" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Username</label>
+        <input name="username" class="form-control" placeholder="e.g., C##AUTOMON" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Password</label>
+        <input name="password" type="password" class="form-control" placeholder="********" required>
+        <div class="form-text" id="pwdHint">
+          Stored for agent to generate Alloy connection_string. For edit, keep blank to retain existing password.
+        </div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="monitoringSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="activeSwitch" checked>
+          <label class="form-check-label" for="activeSwitch">Active</label>
+        </div>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="col-12 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+
+      <hr class="my-2">
+
+      <div class="small text-muted">
+        <div><b>Alloy connection_string example</b></div>
+        <div><code>oracle://USER:PASS@HOST:PORT/SERVICE</code></div>
+        <div>If username contains <code>#</code>, agent must URL-encode (<code>#</code> → <code>%23</code>).</div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+  const rows = document.getElementById("rows");
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("monitoringSelect");
+  const activeSwitch = document.getElementById("activeSwitch");
+
+  let state = { q: "" };
+  let debounce;
+
+  function esc(s) {
+    return (s ?? "").toString()
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  async function loadCustomers(el, selected=null, all=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    el.innerHTML = all
+      ? "<option value=''>All Customers</option>"
+      : "<option value=''>Select Customer</option>";
+
+    (d.items || []).forEach(c => {
+      el.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${c.cid}">${esc(c.acct_id)} — ${esc(c.name)}</option>`
+      );
+    });
+
+    if (selected) el.value = selected;
+  }
+
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+
+    if (!monitoringSelect) return;
+    monitoringSelect.innerHTML = "";
+
+    (d.items || []).forEach(p => {
+      monitoringSelect.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${esc(p.ip_address)}">${esc(p.ip_address)}</option>`
+      );
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  async function load() {
+    const params = new URLSearchParams();
+    if (state.q) params.append("q", state.q);
+    if (customerFilter.value) params.append("customer_id", customerFilter.value);
+
+    const r = await fetch(`/api/oracle-db-monitors?${params}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+
+    const items = d.items || [];
+    if (!items.length) {
+      rows.innerHTML =
+        `<tr><td colspan="9" class="text-center text-muted">No results</td></tr>`;
+      return;
+    }
+
+    items.forEach(it => {
+      const badge = it.active
+        ? `<span class="badge bg-success">Active</span>`
+        : `<span class="badge bg-secondary">Inactive</span>`;
+
+      rows.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${esc(it.friendly_name || "")}</td>
+          <td>
+            <strong>${esc(it.customer_acct_id || "")}</strong><br>
+            <small class="text-muted">${esc(it.customer_name || "")}</small>
+          </td>
+          <td>${esc(it.host)}</td>
+          <td>${esc(it.port)}</td>
+          <td>${esc(it.service_name)}</td>
+          <td>${esc(it.username)}</td>
+          <td>${esc(it.monitoring_server)}</td>
+          <td>${badge}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary grafana"
+                    data-customer="${esc(it.customer_name)}"
+                    data-db="${esc(it.service_name)}"
+                    data-host="${esc(it.host)}"
+                    data-port="${esc(it.port)}">
+              <i data-lucide="bar-chart-2" width="16"></i>
+            </button>
+
+            {% if can("edit_oracle") %}
+            <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+      `);
+    });
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  rows.onclick = async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    // Grafana (optional) — adjust URL to your Oracle dashboard
+    if (btn.classList.contains("grafana")) {
+      const customer = btn.dataset.customer || "";
+      const db = btn.dataset.db || "";
+      const host = btn.dataset.host || "";
+      const port = btn.dataset.port || 1521;
+      
+
+      // Change this to your real dashboard
+      const grafanaUrl =
+        `${GRAFANA_BASE}/d/oracledb`
+        + `?var-customer=${encodeURIComponent(customer)}`
+        + `&var-host=${encodeURIComponent(`${host}:${port}`)}`
+        + `&kiosk`;
+
+      if (typeof openGrafanaModal === "function") {
+        openGrafanaModal(grafanaUrl, `Oracle DB — ${host}/${db}`);
+      } else {
+        window.open(grafanaUrl, "_blank");
+      }
+      return;
+    }
+
+    // Delete
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this Oracle DB monitor?")) return;
+      await fetch(`/api/oracle-db-monitor/${btn.dataset.id}`, { method:"DELETE" });
+      load();
+      return;
+    }
+
+    // Edit
+    if (btn.classList.contains("edit")) {
+      const r = await fetch(`/api/oracle-db-monitors`);
+      const d = await r.json();
+      const items = d.items || [];
+      const item = items.find(x => String(x.id) === String(btn.dataset.id));
+      if (!item) return;
+
+      editIdEl.value = item.id;
+      document.getElementById("drawerTitle").innerText = "Edit Oracle DB";
+
+      form.friendly_name.value = item.friendly_name || "";
+      form.host.value = item.host || "";
+      form.port.value = item.port || 1521;
+      form.service_name.value = item.service_name || "";
+      form.username.value = item.username || "";
+      activeSwitch.checked = !!item.active;
+
+      // password: blank means keep existing
+      form.password.value = "";
+      form.password.required = false;
+
+      await loadCustomers(customerSelect, item.customer_id);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+    }
+  };
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const formErrors = document.getElementById("formErrors");
+    if (formErrors) formErrors.textContent = "";
+
+    const payload = {
+      id: editIdEl.value || null,
+      customer_id: customerSelect.value,
+      friendly_name: form.friendly_name.value,
+      host: form.host.value,
+      port: Number(form.port.value || 1521),
+      service_name: form.service_name.value,
+      username: form.username.value,
+      monitoring_server: monitoringSelect.value,
+      active: !!activeSwitch.checked
+    };
+
+    // Send password only if provided
+    const pwd = (form.password.value || "").trim();
+    if (pwd) payload.password = pwd;
+
+    // Validate basics
+    if (!payload.customer_id || !payload.host || !payload.service_name || !payload.username || !payload.monitoring_server) {
+      if (formErrors) formErrors.textContent = "Please fill Customer, Host, Service, Username, and Monitoring Server.";
+      return;
+    }
+    if (!payload.id && !payload.password) {
+      if (formErrors) formErrors.textContent = "Password is required for new Oracle DB monitor.";
+      return;
+    }
+
+    await fetch("/api/oracle-db-monitors", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    drawer.hide();
+    editIdEl.value = "";
+    form.reset();
+    form.password.required = true;
+    activeSwitch.checked = true;
+
+    load();
+  });
+
+  customerFilter.onchange = load;
+  searchInput.oninput = (e) => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      load();
+    }, 250);
+  };
+
+  // init
+  loadCustomers(customerFilter, null, true);
+  if (customerSelect) loadCustomers(customerSelect);
+  if (monitoringSelect) loadProxies();
+  load();
+});
+</script>
+
+{% endblock %}
+

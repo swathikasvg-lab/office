@@ -1,0 +1,327 @@
+{# templates/monitoring_idrac.html #}
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">IDRAC Monitoring</h1>
+  <div class="d-flex gap-2">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by IP…" style="width:280px;">
+
+    {% if can("edit_idrac") %}
+    <button id="addBtn" class="btn btn-info text-white" data-bs-toggle="offcanvas"
+            data-bs-target="#idracDrawer">
+      + Add Configuration
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Device IP</th>
+          <th>Monitoring Server</th>
+          <th>SNMP Version</th>
+          <th>Community</th>
+          <th>Port</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="idracDrawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add IDRAC Configuration</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="idracForm" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Device IP</label>
+        <input name="device_ip" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="idracMonitoringServer" name="monitoring_server"
+                class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP Version</label>
+        <select name="snmp_version" class="form-select">
+          <option value="v2c">v2c</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Community</label>
+        <input name="community" type="password" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP Port</label>
+        <input name="port" type="number" value="161" class="form-control">
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const CAN_EDIT_IDRAC = {{ "true" if can("edit_idrac") else "false" }};
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+
+  const customerFilter = document.getElementById("customerFilter");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("idracMonitoringServer");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("idracDrawer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+
+  const idracForm = document.getElementById("idracForm");
+  const editIdEl = document.getElementById("editId");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const formErrors = document.getElementById("formErrors");
+
+  const addBtn = document.getElementById("addBtn");
+
+  let debounce;
+  let state = { page:1, per_page:25, q:"", customer_id:"" };
+
+  /* ---------- LOAD CUSTOMERS (SAFE FOR FULL_VIEWER) ---------- */
+  async function loadCustomers(selectEl, selected=null, includeAll=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+
+    selectEl.innerHTML = includeAll
+      ? '<option value="">All Customers</option>'
+      : '<option value="">Select Customer</option>';
+
+    if (!r.ok) {
+      return; // no access, do not break UI
+    }
+
+    const d = await r.json();
+    (d.items || []).forEach(c => {
+      const o = document.createElement("option");
+      o.value = c.cid;
+      o.textContent = `${c.acct_id} — ${c.name}`;
+      selectEl.appendChild(o);
+    });
+
+    if (selected) selectEl.value = selected;
+  }
+
+  /* ---------- LOAD PROXIES (SAFE) ---------- */
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+
+    monitoringSelect.innerHTML = '<option value="">Select Monitoring Server</option>';
+
+    if (!r.ok) {
+      return; // no access or error -> don't break UI
+    }
+
+    const d = await r.json();
+
+    (d.items || []).forEach(p => {
+      monitoringSelect.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${p.ip_address}">${p.ip_address}</option>`
+      );
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  /* ---------- LOAD TABLE ---------- */
+  async function load() {
+    const r = await fetch(`/api/idrac-configs?${new URLSearchParams(state)}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+    pageMeta.textContent = "";
+
+    if (!d.items || !d.items.length) {
+      rows.innerHTML =
+        '<tr><td colspan="7" class="text-center text-muted py-4">No results</td></tr>';
+      return;
+    }
+
+    d.items.forEach(it => {
+      let actions = `
+        <button class="btn btn-sm btn-outline-secondary grafana"
+          data-customer="${it.customer_name}"
+          data-idrac="${it.device_ip}">
+          <i data-lucide="bar-chart-2" width="16"></i>
+        </button>
+      `;
+
+      if (CAN_EDIT_IDRAC) {
+        actions += `
+          <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+            <i data-lucide="edit-3" width="16"></i>
+          </button>
+          <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+            <i data-lucide="trash-2" width="16"></i>
+          </button>
+        `;
+      }
+
+      rows.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td><strong>${it.customer_acct_id}</strong><br>
+              <small class="text-muted">${it.customer_name}</small></td>
+          <td>${it.device_ip}</td>
+          <td>${it.monitoring_server}</td>
+          <td>${it.snmp_version}</td>
+          <td>${it.community ? "******" : ""}</td>
+          <td>${it.port}</td>
+          <td class="text-center">${actions}</td>
+        </tr>
+      `);
+    });
+
+    lucide.createIcons();
+
+    // Optional meta (only if API provides it)
+    if (typeof d.page !== "undefined" && typeof d.pages !== "undefined") {
+      pageMeta.textContent = `Page ${d.page} of ${d.pages} • ${d.total || d.items.length} total`;
+    }
+  }
+
+  /* ---------- EVENTS ---------- */
+  prevBtn.onclick = () => { state.page = Math.max(1, state.page - 1); load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  searchInput.oninput = e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 250);
+  };
+
+  customerFilter.onchange = () => {
+    state.customer_id = customerFilter.value;
+    state.page = 1;
+    load();
+  };
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    if (btn.classList.contains("grafana")) {
+      openGrafanaModal(
+        `${GRAFANA_BASE}/d/idracmonitoring`
+        + `?var-customer=${encodeURIComponent(btn.dataset.customer)}`
+        + `&var-idrac_host=${encodeURIComponent(btn.dataset.idrac)}&kiosk`,
+        `IDRAC Monitoring — ${btn.dataset.idrac}`
+      );
+      return;
+    }
+
+    if (CAN_EDIT_IDRAC && btn.classList.contains("del")) {
+      if (!confirm("Delete this IDRAC configuration?")) return;
+      await fetch(`/api/idrac-configs/${btn.dataset.id}`, { method:"DELETE" });
+      load();
+      return;
+    }
+
+    if (CAN_EDIT_IDRAC && btn.classList.contains("edit")) {
+      const r = await fetch(`/api/idrac-configs/${btn.dataset.id}`);
+      const { item } = await r.json();
+
+      editIdEl.value = item.id;
+      drawerTitle.textContent = "Edit IDRAC Configuration";
+      formErrors.textContent = "";
+
+      idracForm.device_ip.value = item.device_ip;
+      idracForm.community.value = item.community || "";
+      idracForm.snmp_version.value = item.snmp_version || "v2c";
+      idracForm.port.value = item.port || 161;
+
+      await loadCustomers(customerSelect, item.customer_id, false);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+      return;
+    }
+  };
+
+  // Ensure Add always opens in "Add mode" and loads dropdowns
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      editIdEl.value = "";
+    });
+  }
+
+  // When drawer opens in Add mode, populate dropdowns
+  drawerEl.addEventListener("show.bs.offcanvas", async () => {
+    if (!editIdEl.value) {
+      drawerTitle.textContent = "Add IDRAC Configuration";
+      formErrors.textContent = "";
+      idracForm.reset();
+      idracForm.port.value = 161;
+      idracForm.snmp_version.value = "v2c";
+
+      await loadCustomers(customerSelect, null, false);
+      await loadProxies(null);
+    }
+  });
+
+  /* ---------- INIT ---------- */
+  loadCustomers(customerFilter, null, true);
+  load();
+});
+</script>
+
+{% endblock %}
+

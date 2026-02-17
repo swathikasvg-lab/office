@@ -1,0 +1,428 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Uptime Monitoring – Ping</h1>
+  <div class="d-flex gap-2 align-items-center">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, host or server…" style="width:320px;">
+
+    {% if can("edit_ping") %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add Hosts
+    </button>
+    {% endif %}
+
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>Host / IP</th>
+          <th>Timeout</th>
+          <th>Packets</th>
+          <th>Monitoring Server</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DRAWER ================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Ping Targets</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+
+    <form id="form" class="row g-4">
+      <input type="hidden" id="editId">
+
+      <!-- CUSTOMER -->
+      <div class="col-12">
+        <label class="form-label">Customer <span class="text-danger">*</span></label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="col-12">
+        <h6 class="text-muted mb-1">Settings</h6>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Timeout (seconds)</label>
+            <input name="timeout" type="number" min="1" max="60"
+                   value="5" class="form-control" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Packet Count</label>
+            <input name="packet_count" type="number"
+                   min="1" max="20" value="3"
+                   class="form-control" required>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Monitoring Server</label>
+            <select id="pingMonitoringServer"
+                    name="monitoring_server"
+                    class="form-select" required></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- BULK CREATE -->
+      <div id="repeater" class="col-12">
+        <h6 class="text-muted mt-2 mb-1">Targets</h6>
+
+        <div id="repeatWrap" class="d-flex flex-column gap-3"></div>
+
+        <button type="button" id="addRowBtn"
+                class="btn btn-sm btn-outline-primary mt-1">
+          <i data-lucide="plus" width="14" height="14"></i>
+          Add another host
+        </button>
+      </div>
+
+      <!-- EDIT MODE -->
+      <div id="singleEdit" class="col-12 d-none">
+        <h6 class="text-muted mb-1">Edit Target</h6>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Host / IP</label>
+            <input name="host_single" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Friendly Name</label>
+            <input name="name_single" class="form-control">
+          </div>
+        </div>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="col-12 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+
+  const customerFilter = document.getElementById("customerFilter");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("pingMonitoringServer");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+  const drawerTitle = document.getElementById("drawerTitle");
+
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const formErrors = document.getElementById("formErrors");
+
+  const repeater = document.getElementById("repeater");
+  const singleEdit = document.getElementById("singleEdit");
+  const repeatWrap = document.getElementById("repeatWrap");
+  const addRowBtn = document.getElementById("addRowBtn");
+
+  let state = { page: 1, per_page: 25, q: "", customer_id: "" };
+  let debounce;
+
+  /* ---------------- LOAD CUSTOMERS ---------------- */
+  async function loadCustomers(el, selected=null, all=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    el.innerHTML = all ?
+      '<option value="">All Customers</option>' :
+      '<option value="">Select Customer</option>';
+
+    d.items.forEach(c => {
+      const o = document.createElement("option");
+      o.value = c.cid;
+      o.textContent = `${c.acct_id} — ${c.name}`;
+      el.appendChild(o);
+    });
+
+    if (selected) el.value = selected;
+  }
+
+  /* ---------------- LOAD PROXY SERVERS ---------------- */
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+
+    monitoringSelect.innerHTML = "";
+    d.items.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.ip_address;
+      o.textContent = p.ip_address;
+      monitoringSelect.appendChild(o);
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  /* ---------------- REPEATER ---------------- */
+  function addTarget(host="", name="") {
+    const box = document.createElement("div");
+    box.className = "border rounded p-2 bg-light";
+
+    box.innerHTML = `
+      <input class="form-control mb-2 host" placeholder="Host/IP" value="${host}">
+      <input class="form-control mb-2 fname" placeholder="Friendly Name" value="${name}">
+      <button type="button" class="btn btn-sm btn-outline-danger remove">Remove</button>
+    `;
+
+    box.querySelector(".remove").onclick = () => box.remove();
+    repeatWrap.appendChild(box);
+  }
+
+  addRowBtn.onclick = () => addTarget();
+  addTarget();   // one default row
+
+  /* ---------------- LOAD TABLE ---------------- */
+  async function load() {
+    const params = new URLSearchParams({
+      page: state.page,
+      per_page: state.per_page,
+      q: state.q,
+      customer_id: state.customer_id
+    });
+
+    const r = await fetch(`/api/ping-configs?${params}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+
+    if (!d.items.length) {
+      rows.innerHTML = `
+        <tr><td colspan="7" class="text-center text-muted py-3">No results</td></tr>`;
+    } else {
+      d.items.forEach(it => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${it.name}</td>
+          <td>
+            <strong>${it.customer_acct_id}</strong><br>
+            <small class="text-muted">${it.customer_name}</small>
+          </td>
+          <td>${it.host}</td>
+          <td>${it.timeout}s</td>
+          <td>${it.packet_count}</td>
+          <td>${it.monitoring_server}</td>
+          <td>
+	    <button class="btn btn-sm btn-outline-secondary grafana"
+                    data-type="ping"
+                    data-customer="${it.customer_name}"
+                    data-host="${it.host}"
+                    title="View Ping Dashboard">
+              <i data-lucide="bar-chart-2" width="16"></i>
+            </button>
+
+            {% if can("edit_ping") %}
+            <button class="btn btn-sm btn-light border edit"
+                    data-id="${it.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del"
+                    data-id="${it.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+            {% endif %}
+          </td>
+        `;
+        rows.appendChild(tr);
+      });
+
+      lucide.createIcons();
+    }
+
+    pageMeta.textContent =
+      d.total ? `Page ${d.page} of ${d.pages} • ${d.total}` : "";
+
+    prevBtn.disabled = d.page <= 1;
+    nextBtn.disabled = d.page >= d.pages;
+  }
+
+  /* ---------------- ROW ACTIONS ---------------- */
+  rows.onclick = async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    const id = btn.dataset.id;
+    
+    if (btn.classList.contains("grafana")) {
+
+      const customer = btn.dataset.customer;
+      const host = btn.dataset.host;
+
+      const grafanaUrl =
+        `${GRAFANA_BASE}/d/pingmonitoring`
+        + `?var-customer=${encodeURIComponent(customer)}`
+        + `&var-host=${encodeURIComponent(host)}`
+        + `&kiosk`;
+
+      openGrafanaModal(
+        grafanaUrl,
+        `Ping Monitoring — ${host}`
+      );
+
+      return;
+    }
+
+    if (btn.classList.contains("del")) {
+      if (confirm("Delete this target?")) {
+        await fetch(`/api/ping-configs/${id}`, { method:"DELETE" });
+        load();
+      }
+      return;
+    }
+
+    if (btn.classList.contains("edit")) {
+      const r = await fetch(`/api/ping-configs/${id}`);
+      const { item } = await r.json();
+
+      editIdEl.value = id;
+      drawerTitle.textContent = "Edit Ping Target";
+
+      repeater.classList.add("d-none");
+      singleEdit.classList.remove("d-none");
+
+      form.name_single.value = item.name || "";
+      form.host_single.value = item.host || "";
+      form.timeout.value = item.timeout || 5;
+      form.packet_count.value = item.packet_count || 3;
+
+      await loadCustomers(customerSelect, item.customer_id);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+    }
+  };
+
+  /* ---------------- FORM SUBMIT ---------------- */
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    const cid = Number(customerSelect.value);
+    if (!cid) {
+      formErrors.textContent = "Customer is required";
+      return;
+    }
+
+    if (!editIdEl.value) {
+      /* CREATE MULTIPLE */
+      const items = [];
+      repeatWrap.querySelectorAll("div").forEach(b => {
+        const host = b.querySelector(".host").value.trim();
+        const name = b.querySelector(".fname").value.trim();
+        if (host && name) items.push({ host, name });
+      });
+
+      const res = await fetch("/api/ping-configs", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          customer_id: cid,
+          monitoring_server: monitoringSelect.value,
+          timeout: form.timeout.value,
+          packet_count: form.packet_count.value,
+          items
+        })
+      });
+
+      if (res.ok) {
+        drawer.hide();
+        load();
+      } else {
+        formErrors.textContent = "Failed to save";
+      }
+    } else {
+      /* EDIT ONE */
+      const res = await fetch(`/api/ping-configs/${editIdEl.value}`, {
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          customer_id: cid,
+          host: form.host_single.value,
+          name: form.name_single.value,
+          timeout: form.timeout.value,
+          packet_count: form.packet_count.value,
+          monitoring_server: monitoringSelect.value
+        })
+      });
+
+      if (res.ok) {
+        drawer.hide();
+        load();
+      } else {
+        formErrors.textContent = "Failed to update";
+      }
+    }
+  };
+
+  /* ---------------- FILTER EVENTS ---------------- */
+  customerFilter.onchange = () => {
+    state.customer_id = customerFilter.value;
+    state.page = 1;
+    load();
+  };
+
+  searchInput.oninput = (e) => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 250);
+  };
+
+  /* ---------------- INIT ---------------- */
+  loadCustomers(customerFilter, null, true);
+  loadCustomers(customerSelect);
+  loadProxies();
+  load();
+
+});
+</script>
+
+{% endblock %} 
+
+Send me full file

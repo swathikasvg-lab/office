@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>URL Response Slow</title>
+</head>
+<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:white; padding:20px; border-radius:8px;">
+
+    <h2 style="color:#d35400; margin-top:0;">⚠️ URL Slow Response Alert</h2>
+
+    <p>Hello,</p>
+
+    <p>
+      A high response time was detected for the monitored URL.
+    </p>
+
+    <table style="width:100%; border-collapse:collapse; margin-top:15px;">
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Alert Type</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">Warning — Slow Response</td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Hostname</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ hostname }}</td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Response Time</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ response_time }} ms</td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Threshold</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ threshold }} ms</td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Alert Time</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ alert_time }}</td>
+      </tr>
+    </table>
+
+    <p style="margin-top:20px;">Regards,<br><strong>Autointelli Notifications</strong></p>
+  </div>
+</body>
+</html>
+

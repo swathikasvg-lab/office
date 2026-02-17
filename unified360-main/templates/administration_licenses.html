@@ -1,0 +1,336 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Administration - Licenses</h1>
+
+  <div class="d-flex gap-2">
+    <select id="customerFilter" class="form-select" style="width:280px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add License
+    </button>
+  </div>
+</div>
+
+<!-- ======================= TABLE CARD ======================= -->
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:90px;">ID</th>
+          <th>Customer</th>
+          <th>Name</th>
+          <th>Expires</th>
+          <th>Grace Ends</th>
+          <th>Status</th>
+          <th style="width:140px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ======================= OFFCANVAS FORM ======================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add License</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">License Name</label>
+        <input id="licenseName" class="form-control" placeholder="Enterprise Plan">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Starts At (UTC)</label>
+        <input id="startsAt" type="datetime-local" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Expires At (UTC)</label>
+        <input id="expiresAt" type="datetime-local" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Grace Days</label>
+        <input id="graceDays" type="number" class="form-control" min="0" value="30">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Type Limits</label>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label small">Server</label>
+            <input class="form-control" type="number" min="0" data-type="server" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">SNMP</label>
+            <input class="form-control" type="number" min="0" data-type="snmp" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">iDRAC</label>
+            <input class="form-control" type="number" min="0" data-type="idrac" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">iLO</label>
+            <input class="form-control" type="number" min="0" data-type="ilo" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Ping</label>
+            <input class="form-control" type="number" min="0" data-type="ping" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Port</label>
+            <input class="form-control" type="number" min="0" data-type="port" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">URL</label>
+            <input class="form-control" type="number" min="0" data-type="url" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Link</label>
+            <input class="form-control" type="number" min="0" data-type="link" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">SQL Server</label>
+            <input class="form-control" type="number" min="0" data-type="sqlserver" value="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Oracle</label>
+            <input class="form-control" type="number" min="0" data-type="oracle" value="0">
+          </div>
+        </div>
+      </div>
+
+      <div id="formErrors" class="text-danger small mt-1"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+
+        <button type="submit"
+                class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const rows = document.getElementById("rows");
+  const customerFilter = document.getElementById("customerFilter");
+  const drawerEl = document.getElementById("drawer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const formErrors = document.getElementById("formErrors");
+
+  const customerSelect = document.getElementById("customerSelect");
+  const licenseName = document.getElementById("licenseName");
+  const startsAt = document.getElementById("startsAt");
+  const expiresAt = document.getElementById("expiresAt");
+  const graceDays = document.getElementById("graceDays");
+
+  const typeInputs = Array.from(document.querySelectorAll("[data-type]"));
+
+  const state = { customer_id: "" };
+
+  function isoToLocalInput(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function localInputToIso(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    return d.toISOString();
+  }
+
+  function statusFor(lic) {
+    const now = new Date();
+    const exp = lic.expires_at ? new Date(lic.expires_at) : null;
+    const grace = exp ? new Date(exp.getTime() + (lic.grace_days || 0) * 86400000) : null;
+    if (!exp) return { label: "unknown", cls: "secondary", grace: null };
+    if (now <= exp) return { label: "active", cls: "success", grace };
+    if (grace && now <= grace) return { label: "grace", cls: "warning", grace };
+    return { label: "expired", cls: "danger", grace };
+  }
+
+  async function loadCustomers() {
+    const res = await fetch("/api/customers");
+    const data = await res.json().catch(() => ({}));
+    const items = data.items || [];
+
+    customerSelect.innerHTML = "";
+    customerFilter.innerHTML = `<option value="">All Customers</option>`;
+
+    items.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.cid;
+      opt.textContent = `${c.name} (${c.acct_id})`;
+      customerSelect.appendChild(opt);
+
+      const opt2 = opt.cloneNode(true);
+      customerFilter.appendChild(opt2);
+    });
+  }
+
+  async function loadLicenses() {
+    const params = new URLSearchParams();
+    if (state.customer_id) params.set("customer_id", state.customer_id);
+    const res = await fetch(`/api/licenses?${params.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    const items = data.items || [];
+
+    rows.innerHTML = "";
+
+    if (!items.length) {
+      rows.innerHTML = `
+        <tr>
+          <td colspan="7" class="text-center text-muted py-4">No licenses found</td>
+        </tr>`;
+      return;
+    }
+
+    items.forEach(lic => {
+      const s = statusFor(lic);
+      const graceStr = s.grace ? s.grace.toISOString().replace("T"," ").slice(0,16) + "Z" : "-";
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${lic.id}</td>
+        <td>${lic.customer_name || ""}</td>
+        <td>${lic.name || ""}</td>
+        <td>${(lic.expires_at || "").replace("T"," ").slice(0,16)}Z</td>
+        <td>${graceStr}</td>
+        <td><span class="badge bg-${s.cls}">${s.label}</span></td>
+        <td>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-light border edit" data-id="${lic.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del" data-id="${lic.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+          </div>
+        </td>
+      `;
+      tr.dataset.license = JSON.stringify(lic);
+      rows.appendChild(tr);
+    });
+
+    lucide.createIcons();
+
+    rows.querySelectorAll(".del").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        if (!confirm("Delete this license?")) return;
+        const r = await fetch(`/api/licenses/${id}`, { method: "DELETE" });
+        if (r.ok) loadLicenses(); else alert("Delete failed");
+      };
+    });
+
+    rows.querySelectorAll(".edit").forEach(btn => {
+      btn.onclick = () => {
+        const lic = JSON.parse(btn.closest("tr").dataset.license || "{}");
+        editIdEl.value = lic.id;
+        drawerTitle.textContent = "Edit License";
+        customerSelect.value = lic.customer_id || "";
+        licenseName.value = lic.name || "";
+        startsAt.value = isoToLocalInput(lic.starts_at);
+        expiresAt.value = isoToLocalInput(lic.expires_at);
+        graceDays.value = lic.grace_days || 30;
+
+        const limits = {};
+        (lic.items || []).forEach(i => { limits[i.monitoring_type] = i.max_count; });
+        typeInputs.forEach(inp => {
+          inp.value = limits[inp.dataset.type] ?? 0;
+        });
+
+        formErrors.textContent = "";
+        drawer.show();
+      };
+    });
+  }
+
+  customerFilter.addEventListener("change", () => {
+    state.customer_id = customerFilter.value;
+    loadLicenses();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    const items = typeInputs.map(inp => ({
+      monitoring_type: inp.dataset.type,
+      max_count: parseInt(inp.value || "0", 10)
+    }));
+
+    const payload = {
+      customer_id: parseInt(customerSelect.value, 10),
+      name: licenseName.value.trim(),
+      starts_at: localInputToIso(startsAt.value),
+      expires_at: localInputToIso(expiresAt.value),
+      grace_days: parseInt(graceDays.value || "30", 10),
+      items
+    };
+
+    let url = "/api/licenses";
+    let method = "POST";
+    if (editIdEl.value) {
+      url = `/api/licenses/${editIdEl.value}`;
+      method = "PUT";
+      delete payload.customer_id;
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok !== false) {
+      drawer.hide();
+      form.reset();
+      editIdEl.value = "";
+      loadLicenses();
+    } else {
+      formErrors.textContent = data.error || "Failed to save license";
+    }
+  });
+
+  drawerEl.addEventListener("hidden.bs.offcanvas", () => {
+    editIdEl.value = "";
+    form.reset();
+    formErrors.textContent = "";
+    drawerTitle.textContent = "Add License";
+  });
+
+  loadCustomers().then(loadLicenses);
+});
+</script>
+
+{% endblock %}

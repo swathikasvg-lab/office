@@ -1,0 +1,249 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Alerting — Device Up / Down</h1>
+
+  <div class="d-flex gap-2 align-items-center">
+    <input id="searchInput"
+           class="form-control"
+           placeholder="Search by device, source, contact group…"
+           style="width:320px;">
+
+    <select id="customerSelect" class="form-select" style="width:240px">
+      <option value="">All Customers</option>
+    </select>
+
+    {% if can("edit_alerts") %}
+    <button class="btn btn-info text-white" id="openCreateBtn">
+      + Create Rule
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Source</th>
+          <th>Device</th>
+          <th>Contact Group</th>
+          <th>Status</th>
+          <th width="120">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rulesBody">
+        <tr><td colspan="6" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- CREATE MODAL -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Create / Overwrite Device Rules</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="mb-3">
+          <label class="form-label">Customer</label>
+          <select id="formCustomer" class="form-select"></select>
+          <div class="text-danger small" id="errCustomer"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Devices</label>
+          <div class="border rounded p-2" style="max-height:220px;overflow:auto;">
+            <div id="deviceList"></div>
+          </div>
+          <div class="text-danger small" id="errDevices"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Contact Group</label>
+          <select id="formContactGroup" class="form-select"></select>
+          <div class="text-danger small" id="errContactGroup"></div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-info text-white" id="saveRuleBtn">
+          Create / Overwrite
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CAN_EDIT_ALERTS = {{ 'true' if can('edit_alerts') else 'false' }};
+</script>
+
+<script>
+let allRules = [];
+let searchQuery = "";
+const rulesBody = document.getElementById("rulesBody");
+const createModal = new bootstrap.Modal(document.getElementById("createModal"));
+
+function badge(v){
+  return v ? '<span class="badge bg-success">Enabled</span>'
+           : '<span class="badge bg-secondary">Disabled</span>';
+}
+
+function renderRules(){
+  rulesBody.innerHTML="";
+  const q = searchQuery.toLowerCase();
+
+  const filtered = allRules.filter(r =>
+    !q ||
+    r.device.toLowerCase().includes(q) ||
+    r.source.toLowerCase().includes(q) ||
+    (r.contact_group_name||"").toLowerCase().includes(q) ||
+    (r.customer_name||"").toLowerCase().includes(q)
+  );
+
+  if(!filtered.length){
+    rulesBody.innerHTML =
+      `<tr><td colspan="6" class="text-center text-muted py-4">No results</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(r=>{
+    rulesBody.insertAdjacentHTML("beforeend",`
+      <tr>
+        <td>${r.customer_name}</td>
+        <td>${r.source.toUpperCase()}</td>
+        <td>${r.device}</td>
+        <td>${r.contact_group_name}</td>
+        <td>${badge(r.is_enabled)}</td>
+	<td>
+          ${CAN_EDIT_ALERTS ? `
+            <button class="btn btn-sm btn-outline-danger"
+              onclick="deleteRule(${r.id})">Delete</button>
+          ` : ''}
+        </td>
+      </tr>`);
+  });
+}
+
+function loadRules(cid=""){
+  let url="/api/device-updown/rules";
+  if(cid) url+=`?customer_id=${cid}`;
+  fetch(url).then(r=>r.json()).then(d=>{
+    allRules=d.items||[];
+    renderRules();
+  });
+}
+
+function deleteRule(id){
+  if(!confirm("Delete rule? Alerts stop immediately.")) return;
+  fetch(`/api/device-updown/rules/${id}`,{method:"DELETE"})
+    .then(()=>loadRules(document.getElementById("customerSelect").value));
+}
+
+function loadCustomers(sel){
+  fetch("/api/customers").then(r=>r.json()).then(d=>{
+    sel.innerHTML='<option value="">All Customers</option>';
+    d.items.forEach(c=>{
+      sel.insertAdjacentHTML("beforeend",
+        `<option value="${c.cid}">${c.name}</option>`);
+    });
+  });
+}
+
+function loadContactGroups(cid){
+  const sel=document.getElementById("formContactGroup");
+  sel.innerHTML='<option value="">Select Contact Group</option>';
+  if(!cid) return;
+  fetch(`/api/contact-groups?customer_id=${cid}`)
+    .then(r=>r.json()).then(d=>{
+      d.items.forEach(g=>{
+        sel.insertAdjacentHTML("beforeend",
+          `<option value="${g.id}">${g.name}</option>`);
+      });
+    });
+}
+
+function loadDevices(cid){
+  let url="/api/device-updown/devices";
+  if(cid) url+=`?customer_id=${cid}`;
+  fetch(url).then(r=>r.json()).then(d=>{
+    const box=document.getElementById("deviceList");
+    box.innerHTML="";
+    if(!d.items.length){
+      box.innerHTML='<div class="text-muted small">No devices</div>';
+      return;
+    }
+    d.items.forEach((x,i)=>{
+      box.insertAdjacentHTML("beforeend",`
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+            data-source="${x.source}" data-device="${x.device}" id="d${i}">
+          <label class="form-check-label" for="d${i}">${x.label}</label>
+        </div>`);
+    });
+  });
+}
+
+document.getElementById("searchInput").addEventListener("input",e=>{
+  searchQuery=e.target.value.trim();
+  renderRules();
+});
+
+document.getElementById("customerSelect").addEventListener("change",e=>{
+  loadRules(e.target.value);
+});
+
+const openCreateBtn = document.getElementById("openCreateBtn");
+if (openCreateBtn) {
+  openCreateBtn.addEventListener("click", () => {
+    createModal.show();
+    const cid = document.getElementById("formCustomer").value;
+    loadDevices(cid);
+  });
+}
+
+document.getElementById("formCustomer").addEventListener("change",e=>{
+  loadContactGroups(e.target.value);
+  loadDevices(e.target.value);
+});
+
+document.getElementById("saveRuleBtn").onclick=()=>{
+  const cid=document.getElementById("formCustomer").value;
+  const cg=document.getElementById("formContactGroup").value;
+  const devices=[...document.querySelectorAll("#deviceList input:checked")]
+    .map(cb=>({source:cb.dataset.source,device:cb.dataset.device}));
+
+  fetch("/api/device-updown/rules",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({customer_id:cid,devices,contact_group_id:cg})
+  })
+  .then(r=>r.json()).then(resp=>{
+    if(!resp.ok) return;
+    createModal.hide();
+    loadRules(cid);
+  });
+};
+
+loadCustomers(document.getElementById("customerSelect"));
+loadCustomers(document.getElementById("formCustomer"));
+loadRules();
+</script>
+{% endblock %}
+

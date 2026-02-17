@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Server CPU High</title>
+</head>
+<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:white; padding:20px; border-radius:8px;">
+
+    <h2 style="color:#c0392b; margin-top:0;">🔥 Server CPU High Alert</h2>
+
+    <p>Hello,</p>
+    <p>High CPU usage was detected on the monitored server.</p>
+
+    <table style="width:100%; border-collapse:collapse; margin-top:15px;">
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Rule</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ rule.name }}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Customer</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ rule.customer.name }}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Hostname</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ hostname }}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>CPU Usage</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">
+          {{ "%.2f"|format(metrics.get("cpu_usage", 0)) }} %
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #ddd;"><strong>Alert Time</strong></td>
+        <td style="padding:8px; border-bottom:1px solid #ddd;">{{ alert_time }}</td>
+      </tr>
+    </table>
+
+    <p style="margin-top:20px;">Regards,<br><strong>Autointelli Notifications</strong></p>
+  </div>
+</body>
+</html>
+

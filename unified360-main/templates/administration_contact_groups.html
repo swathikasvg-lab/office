@@ -1,0 +1,376 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- TomSelect (Bootstrap 5 theme) -->
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Administration — Contact Groups</h1>
+  <div class="d-flex gap-2">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" class="form-control"
+           placeholder="Search by group name or description…"
+           style="width:320px;">
+
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer"
+            id="addGroupBtn">
+      + Add Group
+    </button>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Group Name</th>
+          <th>Description</th>
+          <th>Members</th>
+          <th style="width:120px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Drawer ================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Contact Group</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required>
+          <option value="">Select Customer</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Group Name</label>
+        <input name="name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Description</label>
+        <textarea name="description" rows="2" class="form-control"></textarea>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Contacts</label>
+        <select id="contactsSelect" multiple></select>
+        <small class="text-muted">Contacts load after selecting a customer</small>
+      </div>
+
+      <div id="formErrors" class="text-danger small mt-1"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+  const customerFilter = document.getElementById("customerFilter");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+  const drawerTitle = document.getElementById("drawerTitle");
+  const editIdEl = document.getElementById("editId");
+  const customerSelect = document.getElementById("customerSelect");
+  const contactsSelect = document.getElementById("contactsSelect");
+  const form = document.getElementById("form");
+  const formErrors = document.getElementById("formErrors");
+  const addGroupBtn = document.getElementById("addGroupBtn");
+
+  let ts = null; // TomSelect instance for contacts
+  let state = { page: 1, per_page: 25, q: "", customer_id: "" };
+
+  // ---------- Utility ----------
+  function safeText(s) { return s == null ? "" : String(s); }
+  function showFormError(msg) { formErrors.textContent = msg || ""; }
+
+  // ---------- Customers ----------
+  async function loadCustomers() {
+    try {
+      const r = await fetch("/api/customers?per_page=1000");
+      if (!r.ok) throw new Error("Failed to load customers");
+      const d = await r.json();
+      // populate filter and drawer select
+      customerFilter.innerHTML = '<option value="">All Customers</option>';
+      customerSelect.innerHTML = '<option value="">Select Customer</option>';
+      d.items.forEach(c => {
+        const label = `${c.acct_id} — ${c.name}`;
+        const optFilter = document.createElement("option");
+        optFilter.value = c.cid;
+        optFilter.textContent = label;
+        customerFilter.appendChild(optFilter);
+
+        const opt = document.createElement("option");
+        opt.value = c.cid;
+        opt.textContent = label;
+        customerSelect.appendChild(opt);
+      });
+    } catch (err) {
+      console.error("loadCustomers:", err);
+    }
+  }
+
+  // ---------- Contacts by customer ----------
+  async function loadContacts(customerId, preselect = []) {
+    // destroy existing tomselect
+    if (ts) {
+      try { ts.destroy(); } catch(e) { /* ignore */ }
+      ts = null;
+    }
+    contactsSelect.innerHTML = "";
+    if (!customerId) {
+      return;
+    }
+    try {
+      const r = await fetch(`/api/contacts?customer_id=${customerId}&per_page=1000`);
+      if (!r.ok) throw new Error("Failed to load contacts");
+      const d = await r.json();
+      d.items.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = `${c.display_name} (${c.email})`;
+        contactsSelect.appendChild(opt);
+      });
+
+      ts = new TomSelect(contactsSelect, {
+        plugins: ["remove_button"],
+        maxItems: null,
+        persist: false,
+        valueField: "value",
+        labelField: "text"
+      });
+
+      if (preselect && preselect.length) {
+        // ensure strings
+        ts.setValue(preselect.map(String));
+      }
+    } catch (err) {
+      console.error("loadContacts:", err);
+    }
+  }
+
+  // ---------- Load Table ----------
+  async function load() {
+    rows.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr>';
+    try {
+      const params = new URLSearchParams({
+        page: state.page,
+        per_page: state.per_page,
+        q: state.q,
+        customer_id: state.customer_id || ""
+      });
+      const r = await fetch(`/api/contact-groups?${params.toString()}`);
+      if (!r.ok) throw new Error("Failed to load groups");
+      const d = await r.json();
+
+      rows.innerHTML = "";
+      if (!d.items.length) {
+        rows.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No results</td></tr>';
+      } else {
+        d.items.forEach(it => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${safeText(it.customer_name)}</td>
+            <td>${safeText(it.name)}</td>
+            <td>${safeText(it.description || "")}</td>
+            <td>${it.members_count || 0}</td>
+            <td>
+              <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-light edit" data-id="${it.id}" title="Edit">
+                  <i data-lucide="edit-3" width="16" height="16"></i>
+                </button>
+                <button class="btn btn-sm btn-danger del" data-id="${it.id}" title="Delete">
+                  <i data-lucide="trash-2" width="16" height="16"></i>
+                </button>
+              </div>
+            </td>
+          `;
+          rows.appendChild(tr);
+        });
+        lucide.createIcons();
+      }
+
+      pageMeta.textContent = `Page ${d.page} of ${d.pages} • ${d.total}`;
+      prevBtn.disabled = d.page <= 1;
+      nextBtn.disabled = d.page >= d.pages;
+    } catch (err) {
+      console.error("load groups:", err);
+      rows.innerHTML = '<tr><td colspan="5" class="text-danger text-center py-4">Failed to load</td></tr>';
+      pageMeta.textContent = "Error";
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+    }
+  }
+
+  // ---------- Events ----------
+  customerFilter.onchange = e => { state.customer_id = e.target.value; state.page = 1; load(); };
+  searchInput.oninput = debounce(e => { state.q = e.target.value.trim(); state.page = 1; load(); }, 300);
+  prevBtn.onclick = () => { state.page = Math.max(1, state.page - 1); load(); };
+  nextBtn.onclick = () => { state.page = state.page + 1; load(); };
+
+  customerSelect.onchange = e => {
+    // when user selects a customer in the drawer, load that customer's contacts
+    const cid = e.target.value;
+    loadContacts(cid);
+  };
+
+  addGroupBtn.onclick = () => {
+    editIdEl.value = "";
+    drawerTitle.textContent = "Add Contact Group";
+    form.name.value = "";
+    form.description.value = "";
+    customerSelect.value = "";
+    showFormError("");
+    if (ts) { try { ts.clear(); } catch(e){} }
+    // open drawer is handled by data-bs attributes, but ensure contacts empty
+    contactsSelect.innerHTML = "";
+  };
+
+  // form submit (create or update)
+  form.onsubmit = async e => {
+    e.preventDefault();
+    showFormError("");
+
+    const cid = customerSelect.value;
+    if (!cid) return showFormError("Customer is required");
+
+    const payload = {
+      customer_id: parseInt(cid),
+      name: form.name.value.trim(),
+      description: form.description.value.trim(),
+      contacts: ts ? ts.getValue().map(v => parseInt(v)) : []
+    };
+
+    const id = editIdEl.value;
+    const url = id ? `/api/contact-groups/${id}` : "/api/contact-groups";
+    const method = id ? "PUT" : "POST";
+
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok) {
+        const err = data && data.errors ? JSON.stringify(data.errors) : data.error || "Save failed";
+        showFormError(err);
+        return;
+      }
+      // success
+      drawer.hide();
+      // small delay to allow backend to commit before reloading
+      setTimeout(load, 250);
+    } catch (err) {
+      console.error("save group:", err);
+      showFormError("Failed to save group");
+    }
+  };
+
+  // table button handler (delegated)
+  rows.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id) return;
+
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this group?")) return;
+      try {
+        const r = await fetch(`/api/contact-groups/${id}`, { method: "DELETE" });
+        if (!r.ok) throw new Error("Delete failed");
+        load();
+      } catch (err) {
+        console.error("delete group:", err);
+        alert("Delete failed");
+      }
+      return;
+    }
+
+    if (btn.classList.contains("edit")) {
+      // We do not have GET /api/contact-groups/<id> — fetch many and find the item
+      try {
+        // Fetch a large page to ensure we have the item (backend pagination may limit)
+        const r = await fetch(`/api/contact-groups?per_page=1000`);
+        if (!r.ok) throw new Error("Failed to fetch groups");
+        const d = await r.json();
+        const it = d.items.find(x => String(x.id) === String(id));
+        if (!it) {
+          alert("Group not found (try increasing per_page on backend).");
+          return;
+        }
+
+        // populate drawer with values
+        editIdEl.value = it.id;
+        drawerTitle.textContent = "Edit Contact Group";
+        customerSelect.value = it.customer_id;
+        form.name.value = it.name || "";
+        form.description.value = it.description || "";
+
+        // load contacts for this customer and preselect group's contacts
+        const preselect = (it.contacts || []).map(c => c.id);
+        await loadContacts(it.customer_id, preselect);
+
+        // show drawer
+        drawer.show();
+      } catch (err) {
+        console.error("edit handler:", err);
+        alert("Failed to load group for editing");
+      }
+      return;
+    }
+  });
+
+  // ---------- small helpers ----------
+  function debounce(fn, ms=300){
+    let t;
+    return (...a) => { clearTimeout(t); t = setTimeout(()=>fn(...a), ms); };
+  }
+
+  // ---------- initial load ----------
+  (async function init(){
+    await loadCustomers();
+    await load();
+  })();
+
+});
+</script>
+
+{% endblock %}
+

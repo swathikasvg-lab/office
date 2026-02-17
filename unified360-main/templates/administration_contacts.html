@@ -1,0 +1,260 @@
+{% extends "layout.html" %}
+{% block content %}
+
+{% if not can('view_admin') and not can('view_contacts') %}
+<div class="alert alert-danger mt-4">
+  You do not have permission to view Contacts.
+</div>
+{% endif %}
+
+{% if can('view_admin') or can('view_contacts') %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Administration — Contacts</h1>
+
+  <div class="d-flex gap-2">
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, email, or phone…" style="width:320px;">
+
+    {% if can('edit_contacts') %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add Contact
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Display Name</th>
+          <th>Email ID</th>
+          <th>Phone Number</th>
+          {% if can('edit_contacts') %}
+          <th style="width:120px;">Actions</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+{% if can('edit_contacts') %}
+<!-- Drawer -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Contact</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      {% if can('view_admin') %}
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required>
+          <option value="">Select customer</option>
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="col-12">
+        <label class="form-label">Display Name</label>
+        <input name="display_name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Email ID</label>
+        <input name="email" type="email" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Phone Number</label>
+        <input name="phone" class="form-control"
+               pattern="[0-9]{7,15}" required>
+        <small class="text-muted">Digits only, 7–15 characters.</small>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  window.CAN_EDIT_CONTACTS = {{ 'true' if can('edit_contacts') else 'false' }};
+  window.CAN_VIEW_ADMIN   = {{ 'true' if can('view_admin') else 'false' }};
+
+  const rows = document.getElementById('rows');
+  const pageMeta = document.getElementById('pageMeta');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const searchInput = document.getElementById('searchInput');
+
+  const drawerEl = document.getElementById('drawer');
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+  const form = document.getElementById('form');
+  const formErrors = document.getElementById('formErrors');
+  const editIdEl = document.getElementById('editId');
+  const drawerTitle = document.getElementById('drawerTitle');
+
+  let state = { page: 1, per_page: 25, q: '' };
+
+  /* -------------------- CUSTOMERS -------------------- */
+  async function loadCustomers() {
+    if (!window.CAN_VIEW_ADMIN) return;
+    const sel = document.getElementById('customerSelect');
+    if (!sel) return;
+
+    const res = await fetch('/api/customers');
+    const data = await res.json();
+
+    data.items.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = String(c.cid);
+      opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  /* -------------------- LOAD TABLE -------------------- */
+  async function load() {
+    const res = await fetch(`/api/contacts?page=${state.page}&q=${state.q}`);
+    const data = await res.json();
+
+    rows.innerHTML = '';
+
+    data.items.forEach(it => {
+      const tr = document.createElement('tr');
+
+      const actions = window.CAN_EDIT_CONTACTS
+        ? `
+          <td>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+                <i data-lucide="edit-3" width="16" height="16"></i>
+              </button>
+              <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+                <i data-lucide="trash-2" width="16" height="16"></i>
+              </button>
+            </div>
+          </td>`
+        : '';
+
+      tr.innerHTML = `
+        <td>${it.display_name}</td>
+        <td>${it.email}</td>
+        <td>${it.phone}</td>
+        ${actions}
+      `;
+      rows.appendChild(tr);
+    });
+
+    lucide.createIcons();
+
+    rows.querySelectorAll('.del').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Delete this contact?')) return;
+        await fetch(`/api/contacts/${b.dataset.id}`, { method: 'DELETE' });
+        load();
+      };
+    });
+
+    rows.querySelectorAll('.edit').forEach(b => {
+      b.onclick = () => {
+        const tr = b.closest('tr').children;
+        editIdEl.value = b.dataset.id;
+        form.display_name.value = tr[0].textContent;
+        form.email.value = tr[1].textContent;
+        form.phone.value = tr[2].textContent;
+        drawerTitle.textContent = 'Edit Contact';
+        drawer.show();
+      };
+    });
+
+    pageMeta.textContent = `Page ${data.page} of ${data.pages}`;
+    prevBtn.disabled = data.page <= 1;
+    nextBtn.disabled = data.page >= data.pages;
+  }
+
+  /* -------------------- FORM -------------------- */
+  form?.addEventListener('submit', async e => {
+    e.preventDefault();
+    formErrors.textContent = '';
+
+    const payload = {
+      display_name: form.display_name.value.trim(),
+      email: form.email.value.trim(),
+      phone: form.phone.value.trim()
+    };
+
+    const sel = document.getElementById('customerSelect');
+    if (sel) {
+      if (!sel.value) {
+        formErrors.textContent = 'Customer is required.';
+        return;
+      }
+      payload.customer_id = parseInt(sel.value, 10);
+    }
+
+    const id = editIdEl.value;
+    const url = id ? `/api/contacts/${id}` : '/api/contacts';
+    const method = id ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      drawer.hide();
+      form.reset();
+      editIdEl.value = '';
+      load();
+    } else {
+      const d = await res.json();
+      formErrors.textContent = d.error || 'Save failed';
+    }
+  });
+
+  prevBtn.onclick = () => { state.page--; load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  searchInput.oninput = e => {
+    state.q = e.target.value;
+    state.page = 1;
+    load();
+  };
+
+  loadCustomers();
+  load();
+});
+</script>
+
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,264 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Administration — Customers</h1>
+
+  <div class="d-flex gap-2">
+    <input id="searchInput"
+           type="text"
+           class="form-control"
+           placeholder="Search by Account ID, Name, or Email…"
+           style="width:320px;">
+
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add Customer
+    </button>
+  </div>
+</div>
+
+<!-- ======================= TABLE CARD ======================= -->
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:80px;">CID</th>
+          <th>Account ID</th>
+          <th>Customer Name</th>
+          <th>Email</th>
+          <th style="width:120px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= OFFCANVAS FORM ======================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Customer</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Account ID</label>
+        <input name="acct_id" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Customer Name</label>
+        <input name="name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Customer Email</label>
+        <input name="email" type="email" class="form-control" required>
+      </div>
+
+      <div id="formErrors" class="text-danger small mt-1"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+
+        <button type="submit"
+                class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================= SCRIPT ======================= -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(drawerEl);
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const formErrors = document.getElementById("formErrors");
+
+  let state = { page: 1, per_page: 25, q: "" };
+
+  // ============================================================
+  // LOAD TABLE
+  // ============================================================
+  async function load() {
+    const params = new URLSearchParams(state);
+    const res = await fetch(`/api/customers?${params.toString()}`);
+
+    if (!res.ok) {
+      rows.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-danger text-center py-4">Failed to load customers</td>
+        </tr>`;
+      return;
+    }
+
+    const data = await res.json();
+    rows.innerHTML = "";
+
+    if (!data.items.length) {
+      rows.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">No results found</td>
+        </tr>`;
+    } else {
+      data.items.forEach(it => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${it.cid}</td>
+          <td>${it.acct_id}</td>
+          <td>${it.name}</td>
+          <td>${it.email || ""}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm btn-light border edit" data-id="${it.cid}">
+                <i data-lucide="edit-3" width="16"></i>
+              </button>
+              <button class="btn btn-sm btn-danger del" data-id="${it.cid}">
+                <i data-lucide="trash-2" width="16"></i>
+              </button>
+            </div>
+          </td>
+        `;
+        rows.appendChild(tr);
+      });
+
+      lucide.createIcons();
+
+      // DELETE BUTTON
+      rows.querySelectorAll(".del").forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.id;
+          if (!confirm("Delete this customer?")) return;
+
+          const r = await fetch(`/api/customers/${id}`, { method: "DELETE" });
+          if (r.ok) load(); else alert("Delete failed");
+        };
+      });
+
+      // EDIT BUTTON
+      rows.querySelectorAll(".edit").forEach(btn => {
+        btn.onclick = () => {
+          const tds = btn.closest("tr").children;
+          editIdEl.value = btn.dataset.id;
+
+          drawerTitle.textContent = "Edit Customer";
+
+          form.acct_id.value = tds[1].textContent.trim();
+          form.name.value = tds[2].textContent.trim();
+          form.email.value = tds[3].textContent.trim();
+
+          formErrors.textContent = "";
+          drawer.show();
+        };
+      });
+    }
+
+    // Pagination meta
+    pageMeta.textContent = data.total
+      ? `Page ${data.page} of ${data.pages} • ${data.total} items`
+      : "";
+
+    prevBtn.disabled = data.page <= 1;
+    nextBtn.disabled = data.page >= data.pages;
+  }
+
+  // ============================================================
+  // EVENTS
+  // ============================================================
+  prevBtn.onclick = () => { state.page--; load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  // Debounced search
+  let timer;
+  searchInput.addEventListener("input", e => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 300);
+  });
+
+  // ============================================================
+  // FORM SUBMIT (Add + Edit)
+  // ============================================================
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    const payload = {
+      acct_id: form.acct_id.value.trim(),
+      name: form.name.value.trim(),
+      email: form.email.value.trim(),
+    };
+
+    let url = "/api/customers";
+    let method = "POST";
+
+    if (editIdEl.value) {
+      url = `/api/customers/${editIdEl.value}`;
+      method = "PUT";
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.ok !== false) {
+      drawer.hide();
+      form.reset();
+      load();
+    } else {
+      formErrors.textContent =
+        data.errors
+          ? Object.entries(data.errors).map(([k, v]) => `${k}: ${v}`).join(" • ")
+          : "Failed to save customer";
+    }
+  });
+
+  // Reset drawer on close
+  drawerEl.addEventListener("hidden.bs.offcanvas", () => {
+    editIdEl.value = "";
+    form.reset();
+    formErrors.textContent = "";
+    drawerTitle.textContent = "Add Customer";
+  });
+
+  load();
+});
+</script>
+
+{% endblock %}
+

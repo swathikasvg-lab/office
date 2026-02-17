@@ -1,0 +1,263 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<style>
+  .card-link {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .hover-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 190px; /* ✅ Fixed equal height */
+    border-radius: 1rem;
+    padding: 1.5rem;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+  }
+
+  .hover-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  }
+
+  .hover-card.inactive {
+    opacity: 0.6;
+    filter: grayscale(50%);
+  }
+
+  .hover-card.inactive::after {
+    content: "No Active Monitors";
+    position: absolute;
+    bottom: 8px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    color: #c00;
+    font-size: 0.8rem;
+    font-weight: 600;
+    opacity: 0.8;
+  }
+
+  .fs-1 i {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* ✅ Consistent spacing inside cards */
+  .hover-card h3 {
+    font-size: 1.5rem;
+    margin: 0.5rem 0;
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .hover-card p {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0;
+  }
+
+  /* ✅ Make all badge positions consistent */
+  .badge {
+    font-size: 0.75rem;
+    vertical-align: middle;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .update-time {
+    font-size: 0.9rem;
+    color: #777;
+  }
+
+  /* ✅ For very wide displays (keep 6 cards in one line) */
+  @media (min-width: 1400px) {
+    .monitoring-grid {
+      grid-template-columns: repeat(6, 1fr);
+    }
+  }
+</style>
+
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Monitoring Overview</h1>
+  <span class="update-time" id="lastUpdated">Last updated: {{ last_updated }}</span>
+</div>
+
+<div class="monitoring-grid">
+
+  <!-- Proxy Servers -->
+  <a href="{{ url_for('proxy.proxy_servers_page') }}" class="card-link" title="Go to Proxy Details">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.proxy == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-primary mb-2"><i data-lucide="monitor-smartphone"></i></div>
+      <h3 class="m-0">
+        {{ summary.active_proxies }}/{{ summary.proxy }}
+        {% if summary.proxy == 0 %}
+          <span class="badge bg-secondary ms-2">No Servers</span>
+        {% elif summary.active_proxies == summary.proxy %}
+          <span class="badge bg-success ms-2">Healthy</span>
+        {% elif summary.active_proxies > 0 %}
+          <span class="badge bg-warning text-dark ms-2">Partial</span>
+        {% else %}
+          <span class="badge bg-danger ms-2">Down</span>
+        {% endif %}
+      </h3>
+      <p class="text-muted mb-0">Proxy Servers (Active/Total)</p>
+    </div>
+  </a>
+
+  <!-- Server Monitoring -->
+  <a href="{{ url_for('server.monitoring_servers_page') }}" class="card-link" title="Go to Server Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.servers == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-success mb-2"><i data-lucide="server"></i></div>
+      <h3 class="m-0">
+        {{ summary.active_servers }}/{{ summary.servers }}
+        {% if summary.servers == 0 %}
+          <span class="badge bg-secondary ms-2">No Servers</span>
+        {% elif summary.active_servers == summary.servers %}
+          <span class="badge bg-success ms-2">Healthy</span>
+        {% elif summary.active_servers > 0 %}
+          <span class="badge bg-warning text-dark ms-2">Partial</span>
+        {% else %}
+          <span class="badge bg-danger ms-2">Down</span>
+        {% endif %}
+      </h3>
+      <p class="text-muted mb-0">Server Monitors (Active/Total)</p>
+    </div>
+  </a>
+  
+  <!-- Desktop Monitoring -->
+  <a href="{{ url_for('desktop.monitoring_desktops_page') }}" class="card-link" title="Go to Desktop Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.desktops == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-primary mb-2"><i data-lucide="monitor"></i></div>
+      <h3 class="m-0">
+        {{ summary.active_desktops }}/{{ summary.desktops }}
+        {% if summary.desktops == 0 %}
+          <span class="badge bg-secondary ms-2">No Devices</span>
+        {% elif summary.active_desktops == summary.desktops %}
+          <span class="badge bg-success ms-2">Healthy</span>
+        {% elif summary.active_desktops > 0 %}
+          <span class="badge bg-warning text-dark ms-2">Partial</span>
+        {% else %}
+          <span class="badge bg-danger ms-2">Down</span>
+        {% endif %}
+      </h3>
+      <p class="text-muted mb-0">Desktop Monitors (Active/Total)</p>
+    </div>
+  </a>
+
+  <!-- Ping Monitors -->
+  <a href="{{ url_for('ping.monitoring_ping') }}" class="card-link" title="Go to Ping Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.ping == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-success mb-2"><i data-lucide="activity"></i></div>
+      <h3 class="m-0">{{ summary.ping }}</h3>
+      <p class="text-muted mb-0">Ping Monitors</p>
+    </div>
+  </a>
+
+  <!-- Port Monitors -->
+  <a href="{{ url_for('port.port_monitor_page') }}" class="card-link" title="Go to Port Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.port == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-warning mb-2"><i data-lucide="wifi"></i></div>
+      <h3 class="m-0">{{ summary.port }}</h3>
+      <p class="text-muted mb-0">Port Monitors</p>
+    </div>
+  </a>
+
+  <!-- URL Monitors -->
+  <a href="{{ url_for('urls.monitoring_url') }}" class="card-link" title="Go to URL Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.url == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-info mb-2"><i data-lucide="globe"></i></div>
+      <h3 class="m-0">{{ summary.url }}</h3>
+      <p class="text-muted mb-0">URL Monitors</p>
+    </div>
+  </a>
+
+  <!-- SNMP Monitors -->
+  <a href="{{ url_for('snmp.monitoring_snmp') }}" class="card-link" title="Go to SNMP Monitoring">
+    <div class="card shadow-sm hover-card p-4 text-center {% if summary.snmp == 0 %}inactive{% endif %}">
+      <div class="fs-1 text-secondary mb-2"><i data-lucide="cpu"></i></div>
+      <h3 class="m-0">{{ summary.snmp }}</h3>
+      <p class="text-muted mb-0">SNMP Monitors</p>
+    </div>
+  </a>
+
+</div>
+
+<hr class="my-4">
+
+<div class="text-end small text-muted">
+  Auto-refreshes every 60 seconds
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  lucide.createIcons();
+  const lastUpdated = document.getElementById("lastUpdated");
+
+  async function refreshDashboard() {
+    try {
+      const res = await fetch("/api/dashboard-summary");
+      if (!res.ok) throw new Error("Failed to fetch summary");
+      const data = await res.json();
+
+      // Proxy
+      updateCard("Proxy Details", data.active_proxies, data.proxy);
+      // Server
+      updateCard("Server Monitoring", data.active_servers, data.servers);
+
+      // Other monitors
+      document.querySelector('[title="Go to Ping Monitoring"] h3').textContent = data.ping;
+      document.querySelector('[title="Go to Port Monitoring"] h3').textContent = data.port;
+      document.querySelector('[title="Go to URL Monitoring"] h3').textContent = data.url;
+      document.querySelector('[title="Go to SNMP Monitoring"] h3').textContent = data.snmp;
+
+      // Inactive styling
+      document.querySelectorAll(".hover-card").forEach(card => {
+        const num = card.querySelector("h3").textContent.match(/\d+/g);
+        const total = num && num.length > 1 ? parseInt(num[1]) : parseInt(num?.[0] || 0);
+        card.classList.toggle("inactive", total === 0);
+      });
+
+      // Timestamp
+      const now = new Date().toLocaleTimeString();
+      lastUpdated.textContent = `Last updated: ${now}`;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function updateCard(title, active, total) {
+    const card = document.querySelector(`[title="Go to ${title}"] .hover-card`);
+    const countElem = card.querySelector("h3");
+    let badgeHTML = "";
+    if (total === 0)
+      badgeHTML = '<span class="badge bg-secondary ms-2">No Servers</span>';
+    else if (active === total)
+      badgeHTML = '<span class="badge bg-success ms-2">Healthy</span>';
+    else if (active > 0)
+      badgeHTML = '<span class="badge bg-warning text-dark ms-2">Partial</span>';
+    else
+      badgeHTML = '<span class="badge bg-danger ms-2">Down</span>';
+    countElem.innerHTML = `${active}/${total} ${badgeHTML}`;
+  }
+
+  setInterval(refreshDashboard, 60000);
+});
+</script>
+
+{% endblock %}
+

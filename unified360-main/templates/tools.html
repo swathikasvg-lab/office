@@ -1,0 +1,253 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Network Tools</h1>
+</div>
+
+<div class="row">
+  <div class="col-md-3">
+    <ul class="list-group">
+      <li class="list-group-item tool-item active" data-tool="ping">Ping</li>
+      <li class="list-group-item tool-item" data-tool="telnet">Telnet</li>
+      <li class="list-group-item tool-item" data-tool="traceroute">Traceroute</li>
+      <li class="list-group-item tool-item" data-tool="nslookup">NSLookup</li>
+      <li class="list-group-item tool-item" data-tool="snmp">SNMP Check</li>
+      <li class="list-group-item tool-item" data-tool="urlcheck">URL Check</li>
+    </ul>
+  </div>
+
+  <div class="col-md-9">
+
+    <div class="card p-3 shadow-sm">
+      <h5 class="mb-3">Input Parameters</h5>
+
+      <!-- Proxy Server Selection -->
+      <div class="mb-3">
+        <label class="form-label">Proxy Server (required)</label>
+        <select id="proxySelect" class="form-select"></select>
+        <div id="proxyWarn" class="text-danger small mt-1 d-none">
+          No proxy servers registered. Tools cannot run.
+        </div>
+      </div>
+
+      <!-- Common Target -->
+      <div id="targetSection" class="mb-3">
+        <label class="form-label">Target / Hostname / IP</label>
+        <input id="target" class="form-control" placeholder="8.8.8.8 or example.com">
+      </div>
+
+      <!-- Port -->
+      <div id="portSection" class="mb-3 d-none">
+        <label class="form-label">Port</label>
+        <input id="port" class="form-control" placeholder="22">
+      </div>
+
+      <!-- SNMP -->
+      <div id="snmpSection" class="d-none">
+        <label class="form-label">Device IP</label>
+        <input id="snmpIp" class="form-control">
+
+        <label class="form-label mt-3">SNMP Version</label>
+        <select id="snmpVersion" class="form-select">
+          <option value="v2c">v2c</option>
+          <option value="v3">v3</option>
+        </select>
+
+        <div id="snmpV2Fields" class="mt-3">
+          <label class="form-label">Community</label>
+          <input id="community" class="form-control" placeholder="public">
+
+          <label class="form-label mt-2">OID</label>
+          <input id="oid" class="form-control" placeholder="1.3.6.1.2.1.1.1.0">
+        </div>
+
+        <div id="snmpV3Fields" class="mt-3 d-none">
+          <label class="form-label">Username</label>
+          <input id="snmpUser" class="form-control">
+
+          <label class="form-label mt-2">Auth Protocol</label>
+          <select id="snmpAuthProto" class="form-select">
+            <option value="none">None</option>
+            <option value="MD5">MD5</option>
+            <option value="SHA">SHA</option>
+          </select>
+
+          <label class="form-label mt-2">Auth Password</label>
+          <input id="snmpAuthPass" type="password" class="form-control">
+
+          <label class="form-label mt-2">Priv Protocol</label>
+          <select id="snmpPrivProto" class="form-select">
+            <option value="none">None</option>
+            <option value="DES">DES</option>
+            <option value="AES">AES</option>
+          </select>
+
+          <label class="form-label mt-2">Priv Password</label>
+          <input id="snmpPrivPass" type="password" class="form-control">
+
+          <label class="form-label mt-2">OID</label>
+          <input id="snmpOidV3" class="form-control" placeholder="1.3.6.1.2.1.1.1.0">
+        </div>
+      </div>
+
+      <!-- URL -->
+      <div id="urlSection" class="mb-3 d-none">
+        <label class="form-label">URL</label>
+        <input id="url" class="form-control" placeholder="https://example.com">
+      </div>
+
+      <!-- Email -->
+      <div class="mb-3">
+        <label class="form-label">Email Output To (optional)</label>
+        <input id="emailTo" class="form-control" placeholder="recipient@example.com">
+      </div>
+
+      <button id="runBtn" class="btn btn-primary mt-2">Run Tool</button>
+    </div>
+
+    <div class="mt-4">
+      <h5>Output</h5>
+      <pre id="outputBox" class="bg-dark text-light p-3 rounded" style="height:300px; white-space:pre-wrap; overflow:auto;">
+Waiting for execution…
+      </pre>
+    </div>
+
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const toolItems = document.querySelectorAll(".tool-item");
+  const outputBox = document.getElementById("outputBox");
+  const runBtn = document.getElementById("runBtn");
+  const proxySelect = document.getElementById("proxySelect");
+  const proxyWarn = document.getElementById("proxyWarn");
+
+  // Input sections
+  const targetSection = document.getElementById("targetSection");
+  const portSection = document.getElementById("portSection");
+  const snmpSection = document.getElementById("snmpSection");
+  const urlSection = document.getElementById("urlSection");
+
+  const target = document.getElementById("target");
+  const port = document.getElementById("port");
+  const url = document.getElementById("url");
+  const emailTo = document.getElementById("emailTo");
+
+  // SNMP
+  const snmpIp = document.getElementById("snmpIp");
+  const snmpVersion = document.getElementById("snmpVersion");
+  const snmpV2Fields = document.getElementById("snmpV2Fields");
+  const snmpV3Fields = document.getElementById("snmpV3Fields");
+  const community = document.getElementById("community");
+  const oid = document.getElementById("oid");
+  const snmpUser = document.getElementById("snmpUser");
+  const snmpAuthProto = document.getElementById("snmpAuthProto");
+  const snmpAuthPass = document.getElementById("snmpAuthPass");
+  const snmpPrivProto = document.getElementById("snmpPrivProto");
+  const snmpPrivPass = document.getElementById("snmpPrivPass");
+  const snmpOidV3 = document.getElementById("snmpOidV3");
+
+  let selectedTool = "ping";
+
+  // SNMP Version toggle
+  snmpVersion.addEventListener("change", () => {
+    const v3 = snmpVersion.value === "v3";
+    snmpV2Fields.classList.toggle("d-none", v3);
+    snmpV3Fields.classList.toggle("d-none", !v3);
+  });
+
+  // Load proxy servers
+  async function loadProxies() {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+    proxySelect.innerHTML = "";
+
+    if (!d.items.length) {
+      proxyWarn.classList.remove("d-none");
+      proxySelect.disabled = true;
+      runBtn.disabled = true;
+      return;
+    }
+
+    proxyWarn.classList.add("d-none");
+    runBtn.disabled = false;
+
+    d.items.forEach(p => {
+      const lbl = (p.location && p.dc_name) ? `${p.location} : ${p.dc_name}` : p.ip_address;
+      proxySelect.innerHTML += `<option value="${p.ip_address}">${lbl}</option>`;
+    });
+  }
+
+  loadProxies();
+
+  function activateTool(tool) {
+    selectedTool = tool;
+    toolItems.forEach(t => t.classList.remove("active"));
+    document.querySelector(`[data-tool="${tool}"]`).classList.add("active");
+
+    targetSection.classList.toggle("d-none", tool === "snmp" || tool === "urlcheck");
+    portSection.classList.toggle("d-none", tool !== "telnet");
+    snmpSection.classList.toggle("d-none", tool !== "snmp");
+    urlSection.classList.toggle("d-none", tool !== "urlcheck");
+  }
+
+  toolItems.forEach(t =>
+    t.addEventListener("click", () => activateTool(t.dataset.tool))
+  );
+
+  // Run Tool
+  runBtn.addEventListener("click", async () => {
+    if (!proxySelect.value) {
+      outputBox.textContent = "No proxy server selected.";
+      return;
+    }
+
+    outputBox.textContent = `Running ${selectedTool.toUpperCase()}...`;
+
+    const payload = {
+      tool: selectedTool,
+      proxy: proxySelect.value,
+      target: target.value,
+      port: port.value,
+      url: url.value,
+      email_to: emailTo.value,
+
+      snmp: {
+        ip: snmpIp.value,
+        version: snmpVersion.value,
+        community: community.value,
+        oid: oid.value,
+        user: snmpUser.value,
+        auth_proto: snmpAuthProto.value,
+        auth_pass: snmpAuthPass.value,
+        priv_proto: snmpPrivProto.value,
+        priv_pass: snmpPrivPass.value,
+        oid_v3: snmpOidV3.value
+      }
+    };
+
+    try {
+      const res = await fetch("/api/run-tool", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      outputBox.textContent = data.ok ? data.output : `Error: ${data.error}`;
+
+    } catch (err) {
+      outputBox.textContent = `Network error: ${err}`;
+    }
+  });
+
+  // initialize
+  activateTool("ping");
+});
+</script>
+
+{% endblock %}
+

@@ -1,0 +1,1059 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Alert Configuration</h1>
+
+  <div class="d-flex gap-2">
+    <input id="searchInput" type="text" class="form-control" placeholder="Search by rule name…" style="width:320px;">
+    {% if can('alert.manage') %}
+    <button class="btn btn-info text-white" id="openAddBtn">
+      + Add Alert Rule
+    </button>
+    {% endif %}
+  </div>
+
+  <select id="tableCustomerSelect"
+          class="form-select"
+          style="width:260px">
+  </select>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Rule Name</th>
+          <th>Customer</th>
+          <th>Monitoring Type</th>
+          <th>Contact Group</th>
+          <th>Eval</th>
+          <th>Enabled</th>
+          <th style="width:120px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+      <select id="perPageSelect" class="form-select form-select-sm" style="width:110px;">
+        <option value="10">10 / page</option>
+        <option value="25" selected>25 / page</option>
+        <option value="50">50 / page</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- ====================== MODAL (ADD / EDIT) ====================== -->
+<div class="modal fade" id="alertRuleModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Add Alert Rule</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+        <form id="form" class="row g-3">
+          <input type="hidden" id="editId" />
+
+          <div class="col-md-12">
+            <label class="form-label">Rule Name</label>
+            <input name="name" class="form-control" required>
+          </div>
+
+          <!-- Customer -->
+          <div class="col-md-4">
+            <label class="form-label">Customer</label>
+            <select id="customerSelect" class="form-select" required>
+              <option value="">Loading customers…</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Monitoring Type</label>
+            <select name="monitoring_label" id="monitoringLabel" class="form-select" required>
+              <option value="Server">Server</option>
+	      <option value="Service Down">Service Down</option>
+              <option value="Ping">Ping</option>
+              <option value="URL">URL</option>
+              <option value="Port">Port</option>
+              <option value="iDRAC">iDRAC</option>
+              <option value="Fortigate">Fortigate FW</option>
+              <option value="Bandwidth">Bandwidth</option>
+              <option value="SNMP Interface">SNMP Interface</option>
+              <option value="Oracle">Oracle</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Contact Group</label>
+            <select name="contact_group_id" id="contactGroup" class="form-select" required>
+              <option value="">Loading contact groups…</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Evaluation Count</label>
+            <input type="number" name="evaluation_count" id="evaluationCount"
+                   class="form-control" value="1" min="1" max="30"
+                   placeholder="e.g., 3 for 3 successive hits" required>
+          </div>
+
+          <div class="col-md-4 d-flex align-items-center">
+            <div class="form-check form-switch mt-4">
+              <input class="form-check-input" type="checkbox" id="isEnabled" checked>
+              <label class="form-check-label" for="isEnabled">Enabled</label>
+            </div>
+          </div>
+
+	  <!-- Service Down Fields -->
+
+	  <div class="col-md-4 svc-only d-none">
+            <label class="form-label">Server</label>
+            <select id="svcInstance" class="form-select">
+              <option value="">Select Server</option>
+            </select>
+          </div>
+
+	  <!-- Oracle-only fields -->
+          <div class="col-md-4 oracle-only d-none">
+            <label class="form-label">Oracle Instance</label>
+            <select id="oracleInstance" class="form-select">
+              <option value="">Select Oracle Instance</option>
+            </select>
+          </div>
+          
+          <div class="col-md-4 oracle-only d-none">
+            <label class="form-label">Tablespace</label>
+            <select id="oracleTablespace" class="form-select">
+              <option value="__ALL__">All Tablespaces</option>
+            </select>
+            <div class="form-text">
+              Used only when you add “Tablespace Usage (%)” condition.
+            </div>
+          </div>
+
+
+
+          <!-- Bandwidth-only fields -->
+          <div class="col-md-4 bw-only d-none">
+            <label class="form-label">Hostname</label>
+            <select id="bwHostname" class="form-select">
+              <option value="">Select Hostname</option>
+            </select>
+          </div>
+
+          <div class="col-md-4 bw-only d-none">
+            <label class="form-label">Interface</label>
+            <select id="bwInterface" class="form-select">
+              <option value="">Select Interface</option>
+            </select>
+          </div>
+
+          <div class="col-12 logic-wrapper">
+            <label class="form-label logic-label">Logic (AND/OR Rule Builder)</label>
+            <div id="logicRoot" class="border rounded p-2 bg-light"></div>
+            <div id="logicNote" class="small text-muted mt-2 d-none">
+              SNMP Interface selected — no conditions required. This rule will monitor SNMP interfaces (no logic builder).
+            </div>
+            <small class="text-muted d-block mt-2">
+              Supported Conditions (examples):<br>
+              <b>Server</b>: cpu_usage, mem_usage, disk_usage, status (string),
+              network_transmit_mbps, network_receive_mbps, service_status (string).<br>
+              <b>Port</b>: port_status (string), response_time_ms.<br>
+              <b>iDRAC</b>: system_health (string), power_status (string), temperature_c.<br>
+              <b>Fortigate</b>: mem_usage, session_count, vpn_tunnel_down, vpn_tunnel_in_mbps,
+              vpn_tunnel_out_mbps, sdwan_link_down, sdwan_link_latency_ms,
+              sdwan_link_jitter_ms, sdwan_link_packet_loss (%).<br>
+              <b>Ping</b>: latency_ms, packet_loss &nbsp; | &nbsp;
+              <b>URL</b>: status_code, response_time_ms<br>
+              <b>SNMP Interface</b>: No conditions — selects SNMP interface monitoring only.<br>
+              <b>Bandwidth</b>: in_mbps, out_mbps.
+	      <b>Oracle</b>: db_status (string), tablespace_usage_pct, active_sessions.<br>
+            </small>
+          </div>
+
+          <div id="formErrors" class="text-danger small"></div>
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="form" class="btn btn-primary" id="saveBtn">Save</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ====================== LOGIC BUILDER STYLES ====================== -->
+<style>
+  .logic-group {
+    border:1px dashed #dee2e6;
+    border-radius:8px;
+    padding:10px;
+    background:#fff;
+  }
+  .logic-row {
+    display:flex;
+    gap:8px;
+    align-items:center;
+    margin-bottom:6px;
+    flex-wrap: wrap;
+  }
+  .logic-controls {
+    display:flex;
+    gap:6px;
+    margin-top:8px;
+  }
+  .logic-row .fld { width: 220px; }
+  .logic-row .op { width: 120px; }
+  .logic-row .val { width: 220px; }
+  @media (max-width: 720px) {
+    .logic-row .fld, .logic-row .op, .logic-row .val { width: 100%; }
+    .logic-row { flex-direction: column; align-items: stretch; }
+  }
+</style>
+
+<!-- ====================== PAGE SCRIPT ====================== -->
+<script>
+window.addEventListener('load', function () {
+  // ---------- DOM references ----------
+  const tableCustomerSelect = document.getElementById('tableCustomerSelect');
+  let selectedCustomerId = null;
+
+  const rows = document.getElementById('rows');
+  const pageMeta = document.getElementById('pageMeta');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const searchInput = document.getElementById('searchInput');
+  const perPageSelect = document.getElementById('perPageSelect');
+
+  const modalEl = document.getElementById('alertRuleModal');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  const modalTitle = document.getElementById('modalTitle');
+
+  const form = document.getElementById('form');
+  const formErrors = document.getElementById('formErrors');
+  const editIdEl = document.getElementById('editId');
+
+  const customerSelect = document.getElementById('customerSelect');
+  const contactGroupSel = document.getElementById('contactGroup');
+  const monitoringLabel = document.getElementById('monitoringLabel');
+  const isEnabledEl = document.getElementById('isEnabled');
+
+  const logicRoot = document.getElementById('logicRoot');
+  const logicNote = document.getElementById('logicNote');
+  const logicLabel = document.querySelector('.logic-label');
+
+  const bwHostnameSel = document.getElementById('bwHostname');
+  const bwInterfaceSel = document.getElementById('bwInterface');
+  const svcInstanceSel = document.getElementById('svcInstance');
+
+  const oracleInstanceSel = document.getElementById('oracleInstance');
+  const oracleTablespaceSel = document.getElementById('oracleTablespace');
+  
+  function setOracleVisible(flag) {
+    document.querySelectorAll('.oracle-only').forEach(el => {
+      if (flag) el.classList.remove('d-none'); else el.classList.add('d-none');
+    });
+  }
+
+  function setServiceDownVisible(flag) {
+    document.querySelectorAll('.svc-only').forEach(el => {
+      if (flag) el.classList.remove('d-none'); else el.classList.add('d-none');
+    });
+  }
+
+
+  // ---------- State ----------
+  let state = { page: 1, per_page: 25, q: '' };
+  perPageSelect.addEventListener('change', () => {
+    state.per_page = parseInt(perPageSelect.value, 10);
+    state.page = 1;
+    load();
+  });
+
+  // Bandwidth targets cache
+  let bwTargets = [];
+  let bwLoaded = false;
+
+  // ---------- Helpers ----------
+  function setBandwidthVisible(flag) {
+    document.querySelectorAll('.bw-only').forEach(el => {
+      if (flag) el.classList.remove('d-none'); else el.classList.add('d-none');
+    });
+  }
+
+  function setLogicVisible(flag) {
+    if (flag) {
+      document.querySelectorAll('.logic-wrapper').forEach(el => el.classList.remove('d-none'));
+      logicNote.classList.add('d-none');
+      logicLabel.classList.remove('text-muted');
+    } else {
+      document.querySelectorAll('.logic-wrapper').forEach(el => el.classList.remove('d-none'));
+      logicRoot.innerHTML = '';
+      logicNote.classList.remove('d-none');
+      logicLabel.classList.add('text-muted');
+    }
+  }
+
+  async function ensureBandwidthTargetsLoaded() {
+    if (bwLoaded) return;
+    try {
+      const res = await fetch('/api/bandwidth/targets');
+      if (!res.ok) { bwTargets = []; bwLoaded = true; return; }
+      const data = await res.json();
+      if (data && data.items) {
+        bwTargets = data.items;
+      } else {
+        bwTargets = [];
+      }
+    } catch (err) {
+      console.error('Failed to load bandwidth targets', err);
+      bwTargets = [];
+    } finally {
+      bwLoaded = true;
+    }
+  }
+
+  async function loadServerInstances(customerId, selected) {
+    try {
+      if (!customerId) {
+        svcInstanceSel.innerHTML = '<option value="">Select Server</option>';
+        return;
+      }
+      const res = await fetch(`/api/servers/by-customer?customer_id=${customerId}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        svcInstanceSel.innerHTML = '<option value="">Failed to load</option>';
+        return;
+      }
+      const opts = ['<option value="">Select Server</option>'];
+      (data.items || []).forEach(s => {
+        opts.push(`<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`);
+      });
+      svcInstanceSel.innerHTML = opts.join('');
+      if (selected) svcInstanceSel.value = String(selected);
+    } catch (e) {
+      console.error(e);
+      svcInstanceSel.innerHTML = '<option value="">Failed to load</option>';
+    }
+  }
+
+
+  function rebuildHostnameOptions(selected) {
+    bwHostnameSel.innerHTML = '<option value="">Select Hostname</option>';
+    bwTargets.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.hostname || '';
+      opt.textContent = t.hostname || '';
+      if (selected && selected === t.hostname) opt.selected = true;
+      bwHostnameSel.appendChild(opt);
+    });
+  }
+
+  function rebuildInterfaceOptions(hostname, selectedIface) {
+    bwInterfaceSel.innerHTML = '<option value="">Select Interface</option>';
+    if (!hostname) return;
+    const entry = bwTargets.find(t => t.hostname === hostname);
+    if (!entry || !Array.isArray(entry.interfaces)) return;
+    entry.interfaces.forEach(ifn => {
+      const opt = document.createElement('option');
+      opt.value = ifn;
+      opt.textContent = ifn;
+      if (selectedIface && selectedIface === ifn) opt.selected = true;
+      bwInterfaceSel.appendChild(opt);
+    });
+  }
+
+  bwHostnameSel.addEventListener('change', () => {
+    rebuildInterfaceOptions(bwHostnameSel.value, null);
+  });
+
+  // ---------- Condition catalog ----------
+  const CONDITION_OPTIONS = {
+    "Service Down": [
+      {"field": "service_name", "label": "Service Name", "ops": ["=", "!="]}
+    ],
+    "Oracle": [
+      {"field": "db_status", "label": "DB Status (DOWN)", "ops": ["=", "!="]},
+      {"field": "tablespace_usage_pct", "label": "Tablespace Usage (%)", "ops": ["<", ">", "="]},
+      {"field": "active_sessions", "label": "Active Sessions", "ops": ["<", ">", "="]}
+    ],
+    "Server": [
+      {"field": "cpu_usage", "label": "CPU Usage (%)", "ops": ["<", ">", "="]},
+      {"field": "mem_usage", "label": "Memory Usage (%)", "ops": ["<", ">", "="]},
+      {"field": "disk_usage", "label": "Disk Usage (%)", "ops": ["<", ">", "="]},
+      {"field": "network_transmit_mbps", "label": "Network Transmit (Mbps)", "ops": ["<", ">", "="]},
+      {"field": "network_receive_mbps", "label": "Network Receive (Mbps)", "ops": ["<", ">", "="]},
+    ],
+    "Port": [
+      {"field": "port_status", "label": "Port Status (UP/DOWN)", "ops": ["=", "!="]},
+      {"field": "response_time_ms", "label": "Response Time (ms)", "ops": ["<", ">", "="]}
+    ],
+    "iDRAC": [
+      {"field": "system_health", "label": "System Health (string)", "ops": ["=", "!="]},
+      {"field": "power_status", "label": "Power Status (string)", "ops": ["=", "!="]},
+      {"field": "temperature_c", "label": "Temperature (°C)", "ops": ["<", ">", "="]}
+    ],
+    "Fortigate": [
+      {"field": "mem_usage", "label": "MEM Usage (%)", "ops": ["<", ">", "="]},
+      {"field": "session_count", "label": "Session Count", "ops": ["<", ">", "="]},
+      {"field": "vpn_tunnel_down", "label": "VPN Tunnel Down Alerts", "ops": ["="]},
+      {"field": "vpn_tunnel_in_mbps", "label": "VPN Tunnel IN Traffic (Mbps)", "ops": ["<", ">", "="]},
+      {"field": "vpn_tunnel_out_mbps", "label": "VPN Tunnel OUT Traffic (Mbps)", "ops": ["<", ">", "="]},
+      {"field": "sdwan_link_down", "label": "SDWAN Link Down Alerts", "ops": ["="]},
+      {"field": "sdwan_link_latency_ms", "label": "SDWAN Link Latency (ms)", "ops": ["<", ">", "="]},
+      {"field": "sdwan_link_jitter_ms", "label": "SDWAN Link Jitter (ms)", "ops": ["<", ">", "="]},
+      {"field": "sdwan_link_packet_loss", "label": "SDWAN Link Packet Loss (%)", "ops": ["<", ">", "="]}
+    ],
+    "SNMP Interface": [],
+    "Ping": [
+      {"field": "latency_ms", "label": "Latency (ms)", "ops": ["<", ">", "="]},
+      {"field": "packet_loss", "label": "Packet Loss (%)", "ops": ["<", ">", "="]}
+    ],
+    "URL": [
+      {"field": "status_code", "label": "HTTP Status Code", "ops": ["=", "!=", ">", "<"]},
+      {"field": "response_time_ms", "label": "Response Time (ms)", "ops": ["<", ">", "="]}
+    ],
+    "Bandwidth": [
+      {"field": "in_mbps", "label": "Inbound Mbps", "ops": ["<", ">", "="]},
+      {"field": "out_mbps", "label": "Outbound Mbps", "ops": ["<", ">", "="]}
+    ]
+  };
+
+  function getValueMeta(field) {
+    if (field === 'tablespace_usage_pct') return {type:'number', min:0, max:100, step:'0.1', ph:'Percent'};
+    if (field === 'active_sessions') return {type:'number', min:0, max:1000000, step:'1', ph:'Sessions'};
+    if (field === 'db_status') return {type:'text', ph:'Enter exact string (e.g., UP or DOWN)'};
+
+    if (field === 'service_name') return {type:'text', ph:'e.g., W3SVC / Spooler / MSSQLSERVER'};
+    if (field === 'latency_ms') return {type: 'number', min: 1, max: 100000, step: '1', ph: 'Latency (ms)'};
+    if (field === 'packet_loss' || field === 'sdwan_link_packet_loss') return {type: 'number', min: 0, max: 100, step: '0.1', ph: 'Packet Loss (%)'};
+    if (field === 'response_time_ms') return {type: 'number', min: 1, max: 100000, step: '1', ph: 'Response Time (ms)'};
+    if (field === 'status_code') return {type: 'number', min: 100, max: 599, step: '1', ph: 'HTTP Status Code'};
+    if (field === 'cpu_usage' || field === 'mem_usage' || field === 'disk_usage') return {type: 'number', min: 0, max: 100, step: '0.1', ph: 'Percent'};
+    if (['network_transmit_mbps','network_receive_mbps','in_mbps','out_mbps','vpn_tunnel_in_mbps','vpn_tunnel_out_mbps'].includes(field)) return {type:'number', min:0, max:1e9, step:'0.1', ph:'Mbps'};
+    if (['inOctets','outOctets','session_count'].includes(field)) return {type:'number', min:0, max:1e15, step:'1', ph:'Integer'};
+    if (field === 'temperature_c') return {type:'number', min:-50, max:200, step:'0.1', ph:'°C'};
+    if (['sdwan_link_latency_ms','sdwan_link_jitter_ms'].includes(field)) return {type:'number', min:0, max:100000, step:'1', ph:'ms'};
+    if (['port_status','status','service_status','system_health','power_status','ifOperStatus','vpn_tunnel_down','sdwan_link_down'].includes(field)) {
+      return {type:'text', ph:'Enter exact string (e.g., DOWN)'};
+    }
+    return {type: 'text', min: null, max: null, step: null, ph: 'Enter threshold'};
+  }
+
+  // ---------- Logic builder ----------
+  function addConditionRow(container, preset) {
+    const row = document.createElement('div');
+    row.className = 'logic-row';
+
+    const fld = document.createElement('select');
+    fld.className = 'form-select form-select-sm fld';
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = 'Select field';
+    ph.disabled = true;
+    ph.selected = true;
+    fld.appendChild(ph);
+
+    const opts = CONDITION_OPTIONS[monitoringLabel.value] || [];
+    opts.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.field;
+      o.textContent = opt.label;
+      o.setAttribute('data-ops', opt.ops.join(','));
+      fld.appendChild(o);
+    });
+
+    const op = document.createElement('select');
+    op.className = 'form-select form-select-sm op';
+    op.disabled = true;
+
+    const val = document.createElement('input');
+    val.className = 'form-control form-control-sm val';
+    val.disabled = true;
+    val.placeholder = 'Enter threshold';
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn btn-sm btn-outline-danger';
+    rm.innerHTML = '&times;';
+    rm.addEventListener('click', () => row.remove());
+
+    row.appendChild(fld);
+    row.appendChild(op);
+    row.appendChild(val);
+    row.appendChild(rm);
+
+    container.appendChild(row);
+
+    function onFieldChange() {
+      const selected = fld.options[fld.selectedIndex];
+      const field = selected ? selected.value : '';
+      if (!field) {
+        op.disabled = true; val.disabled = true; op.innerHTML = ''; val.value = ''; return;
+      }
+      const opsList = (selected.getAttribute('data-ops') || '').split(',');
+      op.innerHTML = '';
+      opsList.forEach(oName => {
+        if (!oName) return;
+        const oEl = document.createElement('option');
+        oEl.value = oName;
+        oEl.textContent = oName;
+        op.appendChild(oEl);
+      });
+      op.disabled = opsList.length === 0;
+
+      const meta = getValueMeta(field);
+      val.type = meta.type || 'text';
+      val.placeholder = meta.ph || 'Enter threshold';
+      if (meta.min != null) val.min = String(meta.min); else val.removeAttribute('min');
+      if (meta.max != null) val.max = String(meta.max); else val.removeAttribute('max');
+      if (meta.step != null) val.step = String(meta.step); else val.removeAttribute('step');
+
+      val.disabled = false;
+    }
+
+    fld.addEventListener('change', onFieldChange);
+
+    if (preset && preset.field) {
+      fld.value = preset.field;
+      onFieldChange();
+      if (preset.op) op.value = preset.op;
+      if (typeof preset.value !== 'undefined' && preset.value !== null) val.value = String(preset.value);
+    }
+  }
+
+  function buildGroupUI(parent, node) {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'logic-group mb-2';
+
+    const topBar = document.createElement('div');
+    topBar.className = 'd-flex justify-content-between align-items-center';
+    groupDiv.appendChild(topBar);
+
+    const opSel = document.createElement('select');
+    opSel.className = 'form-select form-select-sm';
+    opSel.style.width = '100px';
+    opSel.innerHTML = '<option value="AND">AND</option><option value="OR">OR</option>';
+    if (node && node.op) opSel.value = node.op;
+    topBar.appendChild(opSel);
+
+    const inner = document.createElement('div');
+    inner.className = 'logic-inner mt-2';
+    groupDiv.appendChild(inner);
+
+    const controls = document.createElement('div');
+    controls.className = 'logic-controls';
+    groupDiv.appendChild(controls);
+
+    const addConBtn = document.createElement('button');
+    addConBtn.type = 'button';
+    addConBtn.className = 'btn btn-sm btn-outline-primary';
+    addConBtn.textContent = 'Add Condition';
+    addConBtn.addEventListener('click', () => addConditionRow(inner, null));
+
+    const addGrpBtn = document.createElement('button');
+    addGrpBtn.type = 'button';
+    addGrpBtn.className = 'btn btn-sm btn-outline-secondary';
+    addGrpBtn.textContent = 'Add Group';
+    addGrpBtn.addEventListener('click', () => buildGroupUI(inner, { op: 'AND', children: [] }));
+
+    controls.appendChild(addConBtn);
+    controls.appendChild(addGrpBtn);
+
+    if (node && Array.isArray(node.children)) {
+      node.children.forEach(child => {
+        if (child && child.children && child.op) {
+          buildGroupUI(inner, child);
+        } else if (child && typeof child.field !== 'undefined') {
+          addConditionRow(inner, child);
+        }
+      });
+    }
+
+    groupDiv._getNode = function () {
+      const kids = [];
+      const innerChildren = inner.children;
+      for (let k = 0; k < innerChildren.length; k++) {
+        const el = innerChildren[k];
+        if (el.classList.contains('logic-group') && typeof el._getNode === 'function') {
+          const sub = el._getNode();
+          if (sub && sub.children && sub.children.length) kids.push(sub);
+        } else if (el.classList.contains('logic-row')) {
+          const fSel = el.querySelector('.fld');
+          const oSel = el.querySelector('.op');
+          const vInp = el.querySelector('.val');
+          const f = fSel ? fSel.value : '';
+          const o = oSel ? oSel.value : '';
+          const vRaw = vInp ? String(vInp.value).trim() : '';
+          if (!f || vRaw === '') continue;
+          const meta = getValueMeta(f);
+          let vVal = vRaw;
+          if (meta.type !== 'text') {
+            const num = Number(vRaw);
+            if (isNaN(num)) continue;
+            vVal = num;
+          }
+          kids.push({ field: f, op: o || '==', value: vVal });
+        }
+      }
+      return { op: opSel.value, children: kids };
+    };
+
+    parent.appendChild(groupDiv);
+    return groupDiv;
+  }
+
+  function buildNewRoot() {
+    logicRoot.innerHTML = '';
+    buildGroupUI(logicRoot, { op: 'AND', children: [] });
+  }
+
+  // -----------Load Oracle Instances -----------------
+  async function loadOracleInstances(customerId, selectedMonitorId) {
+    try {
+      if (!customerId) {
+        oracleInstanceSel.innerHTML = '<option value="">Select Oracle Instance</option>';
+        return;
+      }
+  
+      // ✅ You need to implement this API (see below)
+      const res = await fetch(`/api/oracle/monitors?customer_id=${customerId}`);
+      const data = await res.json().catch(() => ({}));
+  
+      if (!res.ok || data.ok === false) {
+        oracleInstanceSel.innerHTML = '<option value="">Failed to load</option>';
+        return;
+      }
+  
+      const opts = ['<option value="">Select Oracle Instance</option>'];
+      (data.items || []).forEach(m => {
+        // value should be OracleDbMonitor.id (monitor id)
+        const label = `${m.friendly_name || m.service_name} — ${m.host}:${m.port}/${m.service_name}`;
+        opts.push(`<option value="${escapeHtml(m.id)}">${escapeHtml(label)}</option>`);
+      });
+  
+      oracleInstanceSel.innerHTML = opts.join('');
+      if (selectedMonitorId) oracleInstanceSel.value = String(selectedMonitorId);
+  
+    } catch (e) {
+      console.error(e);
+      oracleInstanceSel.innerHTML = '<option value="">Failed to load</option>';
+    }
+  }
+
+
+  // ---------- Contact groups loader ----------
+  async function loadContactGroups(customerId, selectedId) {
+    try {
+      let url = '/api/contact-groups?per_page=1000';
+      if (customerId) url += `&customer_id=${customerId}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        contactGroupSel.innerHTML = '<option value="">Failed to load</option>';
+        return;
+      }
+      const data = await res.json();
+      // Ensure a blank option is available (in case contact group is null)
+      const opts = ['<option value="">-- Select Contact Group --</option>'];
+      (data.items || []).forEach(cg => {
+        opts.push(`<option value="${cg.id}">${cg.name}</option>`);
+      });
+      contactGroupSel.innerHTML = opts.join('');
+      if (selectedId) contactGroupSel.value = selectedId;
+    } catch (err) {
+      console.error('loadContactGroups error', err);
+      contactGroupSel.innerHTML = '<option value="">Failed to load</option>';
+    }
+  }
+
+  // ---------- Customers loader (modal) ----------
+  async function loadCustomers(selectedId) {
+    try {
+      const res = await fetch('/api/customers?per_page=1000');
+      if (!res.ok) {
+        customerSelect.innerHTML = '<option value="">Failed to load</option>';
+        return;
+      }
+      const data = await res.json();
+      customerSelect.innerHTML = (data.items || []).map(c => `<option value="${c.cid}">${c.name}</option>`).join('');
+      if (selectedId) customerSelect.value = selectedId;
+    } catch (err) {
+      console.error('loadCustomers error', err);
+      customerSelect.innerHTML = '<option value="">Failed to load</option>';
+    }
+  }
+
+  // ---------- Customers loader (table filter) ----------
+  async function loadCustomersForTable() {
+    try {
+      const res = await fetch('/api/customers?per_page=1000');
+      if (!res.ok) {
+        tableCustomerSelect.innerHTML = '<option value="">All Customers</option>';
+        return;
+      }
+      const data = await res.json();
+      tableCustomerSelect.innerHTML = '<option value="">All Customers</option>' + (data.items || []).map(c => `<option value="${c.cid}">${c.name}</option>`).join('');
+    } catch (err) {
+      console.error('loadCustomersForTable error', err);
+      tableCustomerSelect.innerHTML = '<option value="">All Customers</option>';
+    }
+  }
+
+  tableCustomerSelect.addEventListener('change', () => {
+    selectedCustomerId = tableCustomerSelect.value ? parseInt(tableCustomerSelect.value, 10) : null;
+    state.page = 1;
+    load();
+  });
+
+  customerSelect.addEventListener('change', async () => {
+    const cid = parseInt(customerSelect.value, 10);
+    if (cid) await loadContactGroups(cid);
+    if (monitoringLabel.value === 'Service Down') {
+      await loadServerInstances(cid, null);
+    }
+    if (monitoringLabel.value === 'Oracle') {
+      await loadOracleInstances(cid, null);
+    }
+  });
+
+  // ---------- Monitoring type behavior ----------
+  monitoringLabel.addEventListener('change', async () => {
+    const isBw = monitoringLabel.value === 'Bandwidth';
+    const isSnmpInterface = monitoringLabel.value === 'SNMP Interface';
+    const isSvcDown = monitoringLabel.value === 'Service Down';
+    const isOracle = monitoringLabel.value === 'Oracle';
+
+    setBandwidthVisible(isBw);
+    setServiceDownVisible(isSvcDown);
+    setLogicVisible(!isSnmpInterface);
+    setOracleVisible(isOracle);
+
+    if (isBw) {
+      await ensureBandwidthTargetsLoaded();
+      rebuildHostnameOptions(null);
+      bwInterfaceSel.innerHTML = '<option value="">Select Interface</option>';
+    } else {
+      bwHostnameSel.value = '';
+      bwInterfaceSel.value = '';
+    }
+
+    if (isOracle) {
+      const cid = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
+      await loadOracleInstances(cid, null);
+    
+      // reset tablespace dropdown to ALL
+      oracleTablespaceSel.innerHTML = '<option value="__ALL__">All Tablespaces</option>';
+    } else {
+      oracleInstanceSel.innerHTML = '<option value="">Select Oracle Instance</option>';
+      oracleTablespaceSel.innerHTML = '<option value="__ALL__">All Tablespaces</option>';
+    }
+
+    if (isSvcDown) {
+      const cid = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
+      await loadServerInstances(cid, null);
+    } else {
+      svcInstanceSel.innerHTML = '<option value="">Select Server</option>';
+    }
+
+    // reset logic area
+    logicRoot.innerHTML = '';
+    if (!isSnmpInterface) buildNewRoot();
+  });
+
+  // ---------- Open Add modal ----------
+  const openAddBtn = document.getElementById('openAddBtn');
+  if (openAddBtn) {
+    openAddBtn.addEventListener('click', async () => {
+      editIdEl.value = '';
+      modalTitle.textContent = 'Add Alert Rule';
+      form.reset();
+  
+      monitoringLabel.value = 'Server';
+      isEnabledEl.checked = true;
+      setBandwidthVisible(false);
+      setServiceDownVisible(false);
+      setLogicVisible(true);
+      bwHostnameSel.value = '';
+      bwInterfaceSel.value = '';
+      svcInstanceSel.innerHTML = '<option value="">Select Server</option>';
+  
+      await loadCustomers();
+      const cid = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
+      await loadContactGroups(cid);
+  
+      buildNewRoot();
+      formErrors.textContent = '';
+      modal.show();
+    });
+  }
+
+
+  // ---------- Form submit ----------
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    formErrors.textContent = '';
+
+    const topGroup = logicRoot.querySelector('.logic-group');
+    let logicNode;
+    if (monitoringLabel.value === 'SNMP Interface') {
+      logicNode = { op: 'AND', children: [] };
+    } else {
+      logicNode = topGroup ? topGroup._getNode() : { op: 'AND', children: [] };
+    }
+
+    const payload = {
+      name: form.name.value.trim(),
+      monitoring_label: monitoringLabel.value,
+      contact_group_id: contactGroupSel.value ? parseInt(contactGroupSel.value, 10) : null,
+      is_enabled: isEnabledEl.checked,
+      logic: logicNode,
+      evaluation_count: parseInt(document.getElementById('evaluationCount').value, 10) || 1,
+      customer_id: parseInt(customerSelect.value, 10)
+    };
+
+    if (monitoringLabel.value === 'Bandwidth') {
+      payload.bandwidth_hostname = bwHostnameSel.value || '';
+      payload.bandwidth_interface = bwInterfaceSel.value || '';
+    }
+
+    if (monitoringLabel.value === 'Service Down') {
+      payload.svc_instance = svcInstanceSel.value || '';
+    }
+
+    if (monitoringLabel.value === 'Oracle') {
+      payload.oracle_monitor_id = oracleInstanceSel.value || '';
+      payload.oracle_tablespace = oracleTablespaceSel.value || '__ALL__';
+    }
+
+
+    const id = editIdEl.value;
+    const url = id ? `/api/alert-rules/${id}` : '/api/alert-rules';
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        modal.hide();
+        load();
+      } else {
+        const errs = data.errors ? Object.values(data.errors).join(' • ') : (data.error || 'Failed to save');
+        formErrors.textContent = errs;
+      }
+    } catch (err) {
+      console.error('form submit error', err);
+      formErrors.textContent = 'Failed to save (network error)';
+    }
+  });
+
+  // ---------- Load table ----------
+  async function load() {
+    try {
+      const params = new URLSearchParams({
+        page: state.page,
+        per_page: state.per_page,
+        q: state.q || ''
+      });
+      if (selectedCustomerId) params.append('customer_id', selectedCustomerId);
+
+      const res = await fetch('/api/alert-rules?' + params.toString());
+      if (!res.ok) {
+        rows.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Failed to load</td></tr>';
+        return;
+      }
+      const data = await res.json();
+
+      const items = data.items || [];
+      if (!items.length) {
+        rows.innerHTML = '<tr><td colspan="7" class="text-muted text-center py-4">No results</td></tr>';
+        pageMeta.textContent = 'No results';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+      }
+
+      rows.innerHTML = '';
+      items.forEach(it => {
+        const contactGroupName = (it.contact_group && it.contact_group.name) ? it.contact_group.name : (it.contact_group ? JSON.stringify(it.contact_group) : '');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(it.name || '')}</td>
+          <td>${escapeHtml(it.customer_name || '')}</td>
+          <td>${escapeHtml(it.monitoring_label || it.monitoring_type || '')}</td>
+          <td>${escapeHtml(contactGroupName || '')}</td>
+          <td>${escapeHtml(String(it.evaluation_count || ''))}</td>
+          <td>${it.is_enabled ? 'Yes' : 'No'}</td>
+	  <td>
+            {% if can('alert.manage') %}
+              <button class="btn btn-sm btn-light border edit"
+                      data-id="${it.id}"
+                      title="Edit">
+                <i data-lucide="edit-3" width="16" height="16"></i>
+              </button>
+          
+              <button class="btn btn-sm btn-danger del"
+                      data-id="${it.id}"
+                      title="Delete">
+                <i data-lucide="trash-2" width="16" height="16"></i>
+              </button>
+            {% else %}
+              <span class="text-muted small">View only</span>
+            {% endif %}
+          </td>
+
+        `;
+        rows.appendChild(tr);
+      });
+
+      if (window.lucide) lucide.createIcons();
+
+      // Delete handlers
+      rows.querySelectorAll('.del').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('Delete this alert rule?')) return;
+          const id = btn.dataset.id;
+          const r = await fetch(`/api/alert-rules/${id}`, { method: 'DELETE' });
+          if (r.ok) load();
+        };
+      });
+
+      // Edit handlers
+      rows.querySelectorAll('.edit').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.id;
+          // If API returned full list in this page, use it for quick lookup
+          const it = (data.items || []).find(x => String(x.id) === String(id));
+          if (!it) {
+            alert('Item not found');
+            return;
+          }
+
+          editIdEl.value = id;
+          modalTitle.textContent = 'Edit Alert Rule';
+
+          form.name.value = it.name || '';
+          monitoringLabel.value = it.monitoring_label || it.monitoring_type || 'Server';
+          isEnabledEl.checked = !!it.is_enabled;
+          document.getElementById('evaluationCount').value = it.evaluation_count || 1;
+
+          const isBw = (monitoringLabel.value === 'Bandwidth');
+          const isSnmpInterface = (monitoringLabel.value === 'SNMP Interface');
+          const isSvcDown = (monitoringLabel.value === 'Service Down');
+	  const isOracle = (monitoringLabel.value === 'Oracle');
+
+          setBandwidthVisible(isBw);
+          setServiceDownVisible(isSvcDown);
+          setLogicVisible(!isSnmpInterface);
+	  setOracleVisible(isOracle);
+
+          // Load customers + contact groups scoped correctly
+          await loadCustomers(it.customer_id || null);
+          await loadContactGroups(it.customer_id || null, it.contact_group && it.contact_group.id ? it.contact_group.id : null);
+          if (it.customer_id) customerSelect.value = it.customer_id;
+
+          if (isSvcDown) {
+            await loadServerInstances(it.customer_id || null, it.svc_instance || it.svcInstance || null);
+          } else {
+            svcInstanceSel.innerHTML = '<option value="">Select Server</option>';
+          }
+
+	  if (isOracle) {
+            await loadOracleInstances(it.customer_id || null, it.oracle_monitor_id || null);
+          
+            // restore tablespace
+            oracleTablespaceSel.innerHTML = '<option value="__ALL__">All Tablespaces</option>';
+            const ts = it.oracle_tablespace || '__ALL__';
+            oracleTablespaceSel.value = ts;
+          } else {
+            oracleInstanceSel.innerHTML = '<option value="">Select Oracle Instance</option>';
+            oracleTablespaceSel.innerHTML = '<option value="__ALL__">All Tablespaces</option>';
+          }
+
+          // Bandwidth saved values
+          if (isBw) {
+            await ensureBandwidthTargetsLoaded();
+            const savedHost = it.bw_hostname || it.bandwidth_hostname || null;
+            const savedIface = it.bw_interface || it.bandwidth_interface || null;
+            rebuildHostnameOptions(savedHost);
+            rebuildInterfaceOptions(savedHost, savedIface);
+            bwHostnameSel.value = savedHost || '';
+            bwInterfaceSel.value = savedIface || '';
+          } else {
+            bwHostnameSel.value = '';
+            bwInterfaceSel.value = '';
+          }
+
+          // Reconstruct logic
+          logicRoot.innerHTML = '';
+          if (!isSnmpInterface) {
+            try {
+              const savedLogic = it.logic || it.logic_json || {op:'AND', children: []};
+              buildGroupUI(logicRoot, savedLogic);
+            } catch (err) {
+              console.error('reconstruct logic error', err);
+              buildNewRoot();
+            }
+          } else {
+            logicNote.classList.remove('d-none');
+          }
+
+          formErrors.textContent = '';
+          modal.show();
+        };
+      });
+
+      // Pagination meta (API may not include page info; try to read)
+      const total = data.total || items.length;
+      const pages = data.pages || Math.max(1, Math.ceil(total / state.per_page));
+      pageMeta.textContent = `Page ${state.page} of ${pages} • ${total} rule(s)`;
+      prevBtn.disabled = state.page <= 1;
+      nextBtn.disabled = state.page >= pages;
+    } catch (err) {
+      console.error('load table error', err);
+      rows.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Failed to load</td></tr>';
+    }
+  }
+
+  // ---------- Pagination + search ----------
+  prevBtn.addEventListener('click', () => { state.page = Math.max(1, state.page - 1); load(); });
+  nextBtn.addEventListener('click', () => { state.page = state.page + 1; load(); });
+
+  let timer;
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; load(); }, 300);
+  });
+
+  // ---------- Init ----------
+  loadCustomersForTable();
+  load();
+
+  // utility: escape HTML (small helper to avoid simple XSS from DB)
+  function escapeHtml(str) {
+    if (str === null || typeof str === 'undefined') return '';
+    return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','=':'&#61;','/':'&#x2F;'})[s];
+    });
+  }
+});
+</script>
+
+{% endblock %}
+

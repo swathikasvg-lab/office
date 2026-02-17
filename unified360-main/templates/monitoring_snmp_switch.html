@@ -1,0 +1,646 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">SNMP Device Monitoring</h1>
+  <div class="d-flex gap-2">
+    <!-- Customer filter -->
+    <select id="customerFilter" class="form-select" style="width:220px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <!-- Search -->
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, IP, template…"
+           style="width:280px;">
+
+    <!-- Add button -->
+    {% if can('edit_urls') %}
+    <button class="btn btn-info text-white" data-bs-toggle="offcanvas" data-bs-target="#drawer">
+      + Add SNMP
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>Device IP</th>
+          <th>Version</th>
+          <th>Template</th>
+          <th>Port</th>
+          <th>Monitoring Server</th>
+          <th style="width:120px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="8" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Drawer (Add / Edit) ================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add SNMP Configuration</h5>
+    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3" autocomplete="off">
+      <input type="hidden" id="editId">
+
+      <!-- Customer -->
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" name="customer_id" class="form-select" required></select>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Friendly Name</label>
+        <input name="name" class="form-control" required>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Monitoring Server</label>
+        <select id="snmpMonitoringServer" name="monitoring_server" class="form-select" required></select>
+        <small id="snmpProxyWarn" class="text-danger d-none"></small>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Device IP</label>
+        <input name="device_ip" class="form-control" placeholder="10.10.10.5" required>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">SNMP Version</label>
+        <select name="snmp_version" id="snmpVersion" class="form-select">
+          <option value="v2c" selected>v2c</option>
+          <option value="v3">v3</option>
+        </select>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">SNMP Port</label>
+        <input name="port" type="number" min="1" max="65535" value="161" class="form-control" required>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Template</label>
+        <select name="template" class="form-select" required>
+          {% for t in templates %}
+            <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- v2c fields -->
+      <div class="col-md-6 v2c-only">
+        <label class="form-label">Community String</label>
+        <input name="community" id="community" type="password" class="form-control" placeholder="public">
+        <small class="text-muted">For v2c: community string.</small>
+      </div>
+
+      <!-- v3 fields -->
+      <div class="col-md-6 v3-only d-none">
+        <label class="form-label">V3 Username</label>
+        <input name="v3_username" id="v3_username" class="form-control">
+      </div>
+      <div class="col-md-6 v3-only d-none">
+        <label class="form-label">V3 Auth Protocol</label>
+        <select name="v3_auth_protocol" id="v3_auth_protocol" class="form-select">
+          <option value="">(none)</option>
+          <option value="MD5">MD5</option>
+          <option value="SHA">SHA</option>
+        </select>
+      </div>
+      <div class="col-md-6 v3-only d-none">
+        <label class="form-label">V3 Auth Password</label>
+        <input name="v3_auth_password" id="v3_auth_password" type="password" class="form-control" placeholder="">
+      </div>
+      <div class="col-md-6 v3-only d-none">
+        <label class="form-label">V3 Privacy Protocol</label>
+        <select name="v3_priv_protocol" id="v3_priv_protocol" class="form-select">
+          <option value="">(none)</option>
+          <option value="AES">AES</option>
+          <option value="DES">DES</option>
+        </select>
+      </div>
+      <div class="col-md-6 v3-only d-none">
+        <label class="form-label">V3 Privacy Password</label>
+        <input name="v3_priv_password" id="v3_priv_password" type="password" class="form-control" placeholder="">
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- ================= Interface Selection Modal ================= -->
+<div class="modal fade" id="interfaceModal" tabindex="-1">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Select Interface</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <select id="interfaceSelect" class="form-select"></select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="openIfaceDashboard">Open</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+  const customerFilter = document.getElementById("customerFilter");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const form = document.getElementById("form");
+  const formErrors = document.getElementById("formErrors");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const editIdEl = document.getElementById("editId");
+
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("snmpMonitoringServer");
+  const proxyWarn = document.getElementById("snmpProxyWarn");
+  const saveBtn = document.getElementById("saveBtn");
+
+  const versionSel = document.getElementById("snmpVersion");
+  const v2cFields = document.querySelectorAll(".v2c-only");
+  const v3Fields = document.querySelectorAll(".v3-only");
+
+  const communityInput = document.getElementById("community");
+  const v3_username = document.getElementById("v3_username");
+  const v3_auth_protocol = document.getElementById("v3_auth_protocol");
+  const v3_priv_protocol = document.getElementById("v3_priv_protocol");
+  const v3_auth_password = document.getElementById("v3_auth_password");
+  const v3_priv_password = document.getElementById("v3_priv_password");
+
+  let state = { page: 1, per_page: 25, q: "", customer_id: "" };
+  let customerCache = null;
+
+  function toggleVersionFields() {
+    const isV3 = versionSel.value === "v3";
+    v2cFields.forEach(el => el.classList.toggle("d-none", isV3));
+    v3Fields.forEach(el => el.classList.toggle("d-none", !isV3));
+  }
+
+  versionSel.addEventListener("change", toggleVersionFields);
+
+  // ---------- Template selector
+  function resolveSnmpDashboard(template) {
+    const t = (template || "").toLowerCase();
+  
+    if (t.includes("nvidia")) return "nvidiaswitchmonitoring";
+    if (t.includes("fortigate")) return "fortigatemonitoring";
+    if (t.includes("arista")) return "aristaswitchmonitoring";
+    if (t.includes("smartfabric")) return "DellsSmartFabricswitchmonitoring";
+    if (t.includes("n2048")) return "DellN2048switchmonitoring";
+    if (t.includes("cumulus")) return "aristaswitchmonitoring";
+  
+    return "genericswitchmonitoring"; // default fallback
+  }
+
+
+  // ---------- Customers (cache)
+  async function fetchCustomers() {
+    if (customerCache) return customerCache;
+    const res = await fetch("/api/customers?per_page=1000");
+    const data = await res.json().catch(() => ({ items: [] }));
+    customerCache = data.items || [];
+    return customerCache;
+  }
+
+  async function loadCustomerFilter() {
+    const customers = await fetchCustomers();
+    customerFilter.innerHTML = '<option value="">All Customers</option>';
+    customers.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.cid;
+      opt.textContent = `${c.acct_id || c.cid} — ${c.name}`;
+      customerFilter.appendChild(opt);
+    });
+  }
+
+  async function loadCustomerSelect(selectedId = null) {
+    const customers = await fetchCustomers();
+    customerSelect.innerHTML = '<option value="">Select Customer</option>';
+    customers.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.cid;
+      opt.textContent = `${c.acct_id || c.cid} — ${c.name}`;
+      customerSelect.appendChild(opt);
+    });
+    if (selectedId) customerSelect.value = String(selectedId);
+  }
+
+  // ---------- Proxy Servers ----------
+  async function loadProxyServers(selected=null) {
+    try {
+      const res = await fetch("/api/proxy-servers?per_page=1000");
+      const data = await res.json();
+      monitoringSelect.innerHTML = "";
+      if (!data.items || !data.items.length) {
+        monitoringSelect.innerHTML = '<option disabled selected>No proxy servers available</option>';
+        monitoringSelect.disabled = true;
+        saveBtn.disabled = true;
+        proxyWarn.classList.remove("d-none");
+        proxyWarn.textContent = "⚠ Please register a proxy server first.";
+        return;
+      }
+      data.items.forEach(p => {
+        const label = (p.location && p.dc_name) ? `${p.location} : ${p.dc_name}` : p.ip_address;
+        const opt = document.createElement("option");
+        opt.value = p.ip_address;
+        opt.textContent = label;
+        monitoringSelect.appendChild(opt);
+      });
+      if (selected) monitoringSelect.value = selected;
+      monitoringSelect.disabled = false;
+      saveBtn.disabled = false;
+      proxyWarn.classList.add("d-none");
+    } catch (err) {
+      monitoringSelect.innerHTML = '<option disabled selected>Failed to load proxy servers</option>';
+      monitoringSelect.disabled = true;
+      saveBtn.disabled = true;
+      proxyWarn.classList.remove("d-none");
+      proxyWarn.textContent = "Failed to load proxy servers";
+    }
+  }
+
+  // ---------- Load table ----------
+  async function load() {
+    if (state.page < 1) state.page = 1;
+    const params = new URLSearchParams({
+      page: state.page,
+      per_page: state.per_page,
+      q: state.q,
+    });
+    if (state.customer_id) params.append("customer_id", state.customer_id);
+
+    const res = await fetch(`/api/snmp-configs?${params.toString()}`);
+    if (!res.ok) {
+      rows.innerHTML = '<tr><td colspan="8" class="text-danger text-center py-4">Failed to load</td></tr>';
+      return;
+    }
+    const data = await res.json();
+
+    rows.innerHTML = "";
+    if (!data.items || !data.items.length) {
+      rows.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No results</td></tr>';
+    } else {
+      data.items.forEach(it => {
+        // show acct id if present, otherwise show customer name
+        const customerLabel = (it.customer_acct_id || it.customer_name)
+          ? `<strong>${it.customer_acct_id || ''}</strong><br><small class="text-muted">${it.customer_name || ''}</small>`
+          : '<span class="text-muted">—</span>';
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${it.name || ""}</td>
+          <td>${customerLabel}</td>
+          <td>${it.device_ip || ""}</td>
+          <td>${(it.snmp_version || "").toUpperCase()}</td>
+          <td>${it.template || ""}</td>
+          <td>${it.port || ""}</td>
+          <td>${it.monitoring_server || ""}</td>
+          <td>
+            <div class="d-flex gap-2">
+	      <button class="btn btn-sm btn-outline-secondary grafana"
+                data-customer="${it.customer_name}"
+                data-host="${it.device_ip}"
+                data-template="${it.template}">
+                <i data-lucide="bar-chart-2" width="16"></i>
+              </button>
+	      <button class="btn btn-sm btn-outline-primary iface"
+                data-customer="${it.customer_name}"
+                data-host="${it.device_ip}"
+                data-template="${it.template}"
+                title="Interface Bandwidth">
+                <i data-lucide="activity" width="16"></i>
+              </button>
+	      {% if can('edit_urls') %}
+              <button class="btn btn-sm btn-light border edit" data-id="${it.id}" title="Edit">
+                <i data-lucide="edit-3" width="16" height="16"></i>
+              </button>
+              <button class="btn btn-sm btn-danger del" data-id="${it.id}" title="Delete">
+                <i data-lucide="trash-2" width="16" height="16"></i>
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        `;
+        rows.appendChild(tr);
+      });
+      if (window.lucide) lucide.createIcons();
+    }
+
+    pageMeta.textContent = data.total ? `Page ${data.page} of ${data.pages} • ${data.total} item(s)` : "No results";
+    prevBtn.disabled = data.page <= 1;
+    nextBtn.disabled = data.page >= data.pages;
+  }
+
+  // ---------- Pagination ----------
+  prevBtn.addEventListener("click", () => {
+    if (state.page > 1) { state.page -= 1; load(); }
+  });
+  nextBtn.addEventListener("click", () => { state.page += 1; load(); });
+
+  // ---------- Search ----------
+  let searchTimer;
+  searchInput.addEventListener("input", e => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 250);
+  });
+
+  // ---------- Customer Filter ----------
+  customerFilter.addEventListener("change", e => {
+    state.customer_id = e.target.value || "";
+    state.page = 1;
+    load();
+  });
+
+  // ---------- Row Actions (Edit / Delete) ----------
+  rows.addEventListener("click", async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    // Dashboard 
+    if (btn.classList.contains("grafana")) {
+	    const customer = btn.dataset.customer;
+            const host = btn.dataset.host;
+            const template = btn.dataset.template;
+
+            const dashboardUid = resolveSnmpDashboard(template);
+
+            const grafanaUrl =
+              `${GRAFANA_BASE}/d/${dashboardUid}` +
+              `?var-customer=${encodeURIComponent(customer)}` +
+              `&var-agent_host=${encodeURIComponent(host)}` +
+              `&kiosk`;
+
+            openGrafanaModal(
+              grafanaUrl,
+              `SNMP Monitoring — ${host} (${template})`
+            );
+	    return;
+    }
+    // iface
+    // ---------- Interface Bandwidth ----------
+    if (btn.classList.contains("iface")) {
+    
+      const host = btn.dataset.host;
+      const template = btn.dataset.template;
+    
+      const res = await fetch("/api/bandwidth/snmp/targets");
+      const data = await res.json();
+    
+      const target = (data.items || []).find(t => t.agent_host === host);
+      if (!target || !target.interfaces?.length) {
+        alert("No interfaces found for this device");
+        return;
+      }
+    
+      const ifaceSelect = document.getElementById("interfaceSelect");
+      ifaceSelect.innerHTML = "";
+    
+      target.interfaces.forEach(i => {
+        if (!i) return;
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = i;
+        ifaceSelect.appendChild(opt);
+      });
+    
+      window._ifaceCtx = { host, template };
+    
+      new bootstrap.Modal(
+        document.getElementById("interfaceModal")
+      ).show();
+    
+      return;
+    }
+
+    const id = btn.getAttribute("data-id");
+    if (!id) return;
+
+    // Delete
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this SNMP configuration?")) return;
+      const r = await fetch(`/api/snmp-configs/${id}`, { method: "DELETE" });
+      if (r.ok) load();
+      else alert("Delete failed");
+      return;
+    }
+
+    // Edit
+    if (btn.classList.contains("edit")) {
+      const res = await fetch(`/api/snmp-configs/${id}`);
+      if (!res.ok) { alert("Failed to load configuration"); return; }
+      const payload = await res.json().catch(() => ({}));
+      if (!payload || !payload.item) { alert("Invalid response"); return; }
+      const item = payload.item;
+
+      editIdEl.value = id;
+      drawerTitle.textContent = "Edit SNMP Configuration";
+      formErrors.textContent = "";
+
+      await loadCustomerSelect(item.customer_id || null);
+      await loadProxyServers(item.monitoring_server || null);
+
+      // populate fields
+      form.name.value = item.name || "";
+      form.device_ip.value = item.device_ip || "";
+      form.port.value = item.port || 161;
+      form.template.value = item.template || (form.template.options.length ? form.template.options[0].value : "");
+      versionSel.value = item.snmp_version || "v2c";
+      toggleVersionFields();
+
+      // creds handling
+      if ((item.snmp_version || "") === "v2c") {
+        communityInput.value = (item.creds && item.creds.community) ? item.creds.community : "";
+        // clear v3
+        v3_username.value = "";
+        v3_auth_protocol.value = "";
+        v3_priv_protocol.value = "";
+        v3_auth_password.value = "";
+        v3_priv_password.value = "";
+      } else {
+        // v3
+        communityInput.value = "";
+        v3_username.value = item.creds?.username || "";
+        v3_auth_protocol.value = item.creds?.auth_protocol || "";
+        v3_priv_protocol.value = item.creds?.priv_protocol || "";
+        // do not prefill passwords for safety
+        v3_auth_password.value = "";
+        v3_priv_password.value = "";
+      }
+
+      drawer.show();
+    }
+  });
+  document.getElementById("openIfaceDashboard").addEventListener("click", () => {
+    const iface = document.getElementById("interfaceSelect").value;
+    if (!iface) return;
+  
+    const t = (window._ifaceCtx.template || "").toLowerCase();
+    let dashboard = "snmpbwutilization";
+    if (t.includes("fortigate")) dashboard = "fwbwutilization";
+    if (t.includes("arista")) dashboard = "snmpbwutilization";
+  
+    const url =
+      `${GRAFANA_BASE}/d/${dashboard}` +
+      `?var-agent_host=${encodeURIComponent(window._ifaceCtx.host)}` +
+      `&var-descr=${encodeURIComponent(iface)}` +
+      `&kiosk`;
+  
+    bootstrap.Modal.getInstance(
+      document.getElementById("interfaceModal")
+    ).hide();
+  
+    openGrafanaModal(
+      url,
+      `Interface Bandwidth — ${window._ifaceCtx.host} (${iface})`
+    );
+  });
+
+
+  // ---------- Form Submit (Create / Update) ----------
+  if (form && saveBtn) {
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      formErrors.textContent = "";
+  
+      if (!customerSelect.value) {
+        formErrors.textContent = "Customer is required.";
+        return;
+      }
+  
+      const payload = {
+        name: form.name.value.trim(),
+        device_ip: form.device_ip.value.trim(),
+        port: Number(form.port.value) || 161,
+        template: form.template.value,
+        monitoring_server: monitoringSelect.value || "",
+        customer_id: Number(customerSelect.value),
+        snmp_version: versionSel.value
+      };
+  
+      if (versionSel.value === "v2c") {
+        payload.community = form.community.value.trim();
+      } else {
+        payload.username = form.v3_username.value.trim();
+        payload.auth_protocol = form.v3_auth_protocol.value.trim();
+        payload.auth_password = form.v3_auth_password.value.trim();
+        payload.priv_protocol = form.v3_priv_protocol.value.trim();
+        payload.priv_password = form.v3_priv_password.value.trim();
+      }
+  
+      const editId = editIdEl.value;
+      const url = editId ? `/api/snmp-configs/${editId}` : "/api/snmp-configs";
+      const method = editId ? "PUT" : "POST";
+  
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+  
+        const data = await res.json().catch(() => ({}));
+  
+        if (!res.ok || data.ok === false) {
+          const msg = data.errors
+            ? Object.entries(data.errors).map(([k, v]) => `${k}: ${v}`).join(" • ")
+            : (data.error || "Failed to save configuration.");
+          formErrors.textContent = msg;
+          return;
+        }
+  
+        drawer.hide();
+        editIdEl.value = "";
+        form.reset();
+        versionSel.value = "v2c";
+        toggleVersionFields();
+        load();
+  
+      } catch (err) {
+        console.error(err);
+        formErrors.textContent = "Something went wrong.";
+      }
+    });
+  }
+
+
+  // ---------- Drawer Open (Add Mode) ----------
+  const addBtn = document.querySelector('[data-bs-target="#drawer"]');
+
+  if (addBtn && drawer) {
+    addBtn.addEventListener("click", async () => {
+      editIdEl.value = "";
+      drawerTitle.textContent = "Add SNMP Configuration";
+      formErrors.textContent = "";
+      form.reset();
+      form.port.value = 161;
+      versionSel.value = "v2c";
+      toggleVersionFields();
+      await loadCustomerSelect();
+      await loadProxyServers();
+    });
+  }
+
+
+  // ---------- Drawer Close ----------
+  if (drawerEl && drawer) {
+    drawerEl.addEventListener("hidden.bs.offcanvas", () => {
+      editIdEl.value = "";
+      formErrors.textContent = "";
+      form.reset();
+      versionSel.value = "v2c";
+      toggleVersionFields();
+    });
+  }
+
+
+  // ---------- Initial loads ----------
+  loadCustomerFilter();
+  load();
+});
+</script>
+
+{% endblock %}
+

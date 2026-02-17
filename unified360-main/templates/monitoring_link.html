@@ -1,0 +1,293 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Link Monitoring</h1>
+
+  <div class="d-flex gap-2">
+    <select id="customerFilter" class="form-select" style="width:220px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" class="form-control"
+           placeholder="Search by link, site, IP, customer…"
+           style="width:300px;">
+
+    {% if can("edit_link") %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#linkDrawer">
+      + Add Link
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Link Name</th>
+          <th>Site</th>
+          <th>Monitoring Server</th>
+          <th>IP</th>
+          <th>Type</th>
+          <th>BW (Mbps)</th>
+          <th>SNMP</th>
+          <th style="width:140px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="9" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DRAWER ================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="linkDrawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Link</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="linkForm" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" name="customer_id" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Link Name</label>
+        <input name="link_name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Site</label>
+        <input name="site" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="monitoringServer" name="monitoring_server" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">IP Address</label>
+        <input name="ip_address" class="form-control" required>
+      </div>
+
+      <div class="col-6">
+        <label class="form-label">Link Type</label>
+        <select name="link_type" class="form-select">
+          <option value="ISP">ISP</option>
+          <option value="ILL">ILL</option>
+        </select>
+      </div>
+
+      <div class="col-6">
+        <label class="form-label">Provisioned BW (Mbps)</label>
+        <input name="bandwidth_mbps" type="number" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP Version</label>
+        <select id="snmpVersion" name="snmp_version" class="form-select">
+          <option value="2c">v2c</option>
+          <option value="3">v3</option>
+        </select>
+      </div>
+
+      <div class="col-12 snmp-v2">
+        <label class="form-label">SNMP Community</label>
+        <input name="snmp_community" class="form-control">
+      </div>
+
+      <div id="snmpV3Box" class="border rounded p-3 bg-light d-none">
+        <input name="snmpv3_sec_level" class="form-control mb-2" placeholder="Security Level">
+        <input name="snmpv3_username" class="form-control mb-2" placeholder="Username">
+        <input name="snmpv3_auth_protocol" class="form-control mb-2" placeholder="Auth Protocol">
+        <input name="snmpv3_auth_password" type="password" class="form-control mb-2" placeholder="Auth Password">
+        <input name="snmpv3_priv_protocol" class="form-control mb-2" placeholder="Priv Protocol">
+        <input name="snmpv3_priv_password" type="password" class="form-control mb-2" placeholder="Priv Password">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP ifIndex</label>
+        <input name="if_index" class="form-control" required>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const CAN_EDIT_LINK = {{ "true" if can("edit_link") else "false" }};
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  let state = { page:1, per_page:25, q:"", customer_id:"" };
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const searchInput = document.getElementById("searchInput");
+  const customerFilter = document.getElementById("customerFilter");
+
+  const form = document.getElementById("linkForm");
+  const editIdEl = document.getElementById("editId");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringServer = document.getElementById("monitoringServer");
+  const drawer = bootstrap.Offcanvas.getOrCreateInstance(document.getElementById("linkDrawer"));
+  const formErrors = document.getElementById("formErrors");
+
+  const snmpVersion = document.getElementById("snmpVersion");
+  const snmpV2Box = document.querySelector(".snmp-v2");
+  const snmpV3Box = document.getElementById("snmpV3Box");
+
+  snmpVersion.onchange = () => {
+    snmpV2Box.classList.toggle("d-none", snmpVersion.value === "3");
+    snmpV3Box.classList.toggle("d-none", snmpVersion.value !== "3");
+  };
+
+  async function loadCustomers() {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    customerFilter.innerHTML = '<option value="">All Customers</option>';
+    customerSelect.innerHTML = '<option value="">Select Customer</option>';
+
+    d.items.forEach(c => {
+      const label = `${c.acct_id} — ${c.name}`;
+      customerFilter.innerHTML += `<option value="${c.cid}">${label}</option>`;
+      customerSelect.innerHTML += `<option value="${c.cid}">${label}</option>`;
+    });
+  }
+
+  async function loadServers(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+    monitoringServer.innerHTML = "";
+    d.items.forEach(p => {
+      monitoringServer.innerHTML += `<option value="${p.ip_address}">${p.ip_address}</option>`;
+    });
+    if (selected) monitoringServer.value = selected;
+  }
+
+  async function load() {
+    const r = await fetch(`/api/link-monitors?${new URLSearchParams(state)}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+
+    if (!d.items.length) {
+      rows.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">No results</td></tr>`;
+      return;
+    }
+
+    d.items.forEach(it => {
+      rows.innerHTML += `
+        <tr>
+          <td><strong>${it.customer_acct_id}</strong><br><small>${it.customer_name}</small></td>
+          <td>${it.link_name}</td>
+          <td>${it.site || ""}</td>
+          <td>${it.monitoring_server}</td>
+          <td>${it.ip_address}</td>
+          <td>${it.link_type}</td>
+          <td>${it.provisioned_bandwidth_mbps || ""}</td>
+          <td>${it.snmp_version}</td>
+          <td>
+            ${CAN_EDIT_LINK ? `
+              <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+                <i data-lucide="edit-3" width="16"></i>
+              </button>
+              <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+                <i data-lucide="trash-2" width="16"></i>
+              </button>` : ""}
+          </td>
+        </tr>`;
+    });
+
+    lucide.createIcons();
+    pageMeta.textContent = `Page ${d.page} of ${d.pages} • ${d.total} items`;
+  }
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn || !CAN_EDIT_LINK) return;
+
+    const id = btn.dataset.id;
+
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this link?")) return;
+      await fetch(`/api/link-monitors/${id}`, { method:"DELETE" });
+      load();
+    }
+
+    if (btn.classList.contains("edit")) {
+      const r = await fetch(`/api/link-monitors/${id}`);
+      const { item } = await r.json();
+
+      editIdEl.value = id;
+      await loadCustomers();
+      await loadServers(item.monitoring_server);
+
+      Object.keys(item).forEach(k => form[k] && (form[k].value = item[k]));
+      drawer.show();
+    }
+  };
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.customer_id = Number(payload.customer_id);
+
+    const id = editIdEl.value;
+    const r = await fetch(id ? `/api/link-monitors/${id}` : "/api/link-monitors", {
+      method: id ? "PUT" : "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+
+    if (!r.ok) return (formErrors.textContent = "Save failed");
+    drawer.hide();
+    form.reset();
+    editIdEl.value = "";
+    load();
+  };
+
+  customerFilter.onchange = e => { state.customer_id = e.target.value; load(); };
+  searchInput.oninput = e => { state.q = e.target.value.trim(); load(); };
+  prevBtn.onclick = () => { state.page--; load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  loadCustomers();
+  loadServers();
+  load();
+});
+</script>
+
+{% endblock %}
+

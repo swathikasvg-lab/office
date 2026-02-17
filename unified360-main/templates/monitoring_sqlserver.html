@@ -1,0 +1,320 @@
+{#templates/monitoring_sqlserver.html#}
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">SQL Server Monitoring</h1>
+
+  <div class="d-flex gap-2 align-items-center">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, IP, type, or user…" style="width:320px;">
+
+    {% if can("edit_sqlserver") %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add SQL Monitor
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>IP</th>
+          <th>Port</th>
+          <th>DB Type</th>
+          <th>Username</th>
+          <th>Monitoring Server</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+{% if can("edit_sqlserver") %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add SQL Monitor</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Friendly Name</label>
+        <input name="friendly_name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="monitoringSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">IP Address</label>
+        <input name="ip_address" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Port</label>
+        <input name="port" type="number" value="1433" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Database Type</label>
+        <select name="db_type" class="form-select">
+          <option value="SQLServer">SQLServer</option>
+          <option value="AzureSQLDB">AzureSQLDB</option>
+          <option value="AzureSQLManagedInstance">AzureSQLManagedInstance</option>
+          <option value="AzureSQLPool">AzureSQLPool</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Username</label>
+        <input name="username" class="form-control" placeholder="Optional (depends on type/auth)">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Password</label>
+        <input name="password" type="password" class="form-control" placeholder="Leave blank to keep existing">
+        <div class="form-text">For edit: leaving blank will keep the saved password.</div>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="col-12 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+  const rows = document.getElementById("rows");
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("monitoringSelect");
+  const formErrors = document.getElementById("formErrors");
+
+  let state = { q: "" };
+  let debounce;
+
+  async function loadCustomers(el, selected=null, all=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    el.innerHTML = all
+      ? "<option value=''>All Customers</option>"
+      : "<option value=''>Select Customer</option>";
+
+    (d.items || []).forEach(c => {
+      el.insertAdjacentHTML("beforeend",
+        `<option value="${c.cid}">${c.acct_id} — ${c.name}</option>`
+      );
+    });
+
+    if (selected) el.value = selected;
+  }
+
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+
+    monitoringSelect.innerHTML = "";
+    (d.items || []).forEach(p => {
+      monitoringSelect.insertAdjacentHTML("beforeend",
+        `<option value="${p.ip_address}">${p.ip_address}</option>`
+      );
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  async function load() {
+    const params = new URLSearchParams();
+    if (state.q) params.append("q", state.q);
+    if (customerFilter.value) params.append("customer_id", customerFilter.value);
+
+    const r = await fetch(`/api/sqlserver-monitors?${params}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+
+    if (!d.items || !d.items.length) {
+      rows.innerHTML =
+        `<tr><td colspan="8" class="text-center text-muted">No results</td></tr>`;
+      return;
+    }
+
+    d.items.forEach(it => {
+      rows.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${it.friendly_name || ""}</td>
+          <td>
+            <strong>${it.customer_acct_id || ""}</strong><br>
+            <small class="text-muted">${it.customer_name || ""}</small>
+          </td>
+          <td>${it.ip_address}</td>
+          <td>${it.port}</td>
+          <td>${it.db_type}</td>
+          <td>${it.username || "-"}</td>
+          <td>${it.monitoring_server}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary grafana"
+                    data-customer="${it.customer_name || ""}"
+                    data-ip="${it.ip_address}"
+                    data-name="${it.friendly_name || ""}">
+              <i data-lucide="bar-chart-2" width="16"></i>
+            </button>
+
+            {% if can("edit_sqlserver") %}
+            <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+      `);
+    });
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    if (btn.classList.contains("grafana")) {
+      // Adjust this dashboard path to your Grafana
+      const customer = btn.dataset.customer;
+      const ip = btn.dataset.ip;
+      const name = btn.dataset.name;
+
+      const grafanaUrl =
+        `${GRAFANA_BASE}/d/sqlservermonitoring`
+        + `?var-customer=${encodeURIComponent(customer)}`
+        + `&var-host=${encodeURIComponent(ip)}`
+        + `&kiosk`;
+
+      openGrafanaModal(grafanaUrl, `SQL Monitoring — ${ip}`);
+      return;
+    }
+
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this SQL monitor?")) return;
+      await fetch(`/api/sqlserver-monitor/${btn.dataset.id}`, { method:"DELETE" });
+      load();
+      return;
+    }
+
+    if (btn.classList.contains("edit")) {
+      formErrors.textContent = "";
+      const r = await fetch(`/api/sqlserver-monitor/${btn.dataset.id}`);
+      const d = await r.json();
+      if (!d.ok) { alert(d.error || "Failed"); return; }
+
+      const item = d.item;
+
+      editIdEl.value = item.id;
+      form.friendly_name.value = item.friendly_name || "";
+      form.ip_address.value = item.ip_address || "";
+      form.port.value = item.port || 1433;
+      form.db_type.value = item.db_type || "SQLServer";
+      form.username.value = item.username || "";
+      form.password.value = item.password || ""; // optional: will be shown
+
+      await loadCustomers(customerSelect, item.customer_id);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+      return;
+    }
+  };
+
+  form?.addEventListener("submit", async e => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    const payload = {
+      id: editIdEl.value || null,
+      customer_id: customerSelect.value,
+      friendly_name: form.friendly_name.value,
+      monitoring_server: monitoringSelect.value,
+      ip_address: form.ip_address.value,
+      port: form.port.value,
+      db_type: form.db_type.value,
+      username: form.username.value,
+      password: form.password.value,  // leave blank to keep existing
+      active: true
+    };
+
+    const r = await fetch("/api/sqlserver-monitors", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+
+    if (!d.ok) {
+      formErrors.textContent = d.error || "Save failed";
+      return;
+    }
+
+    drawer.hide();
+    editIdEl.value = "";
+    form.reset();
+    load();
+  });
+
+  customerFilter.onchange = load;
+  searchInput.oninput = e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      load();
+    }, 250);
+  };
+
+  loadCustomers(customerFilter, null, true);
+  if (customerSelect) loadCustomers(customerSelect);
+  if (monitoringSelect) loadProxies();
+  load();
+});
+</script>
+
+{% endblock %}
+

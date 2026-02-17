@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Administration — Roles</h1>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:200px;">Role</th>
+          <th style="width:300px;">Description</th>
+          <th>Permissions</th>
+        </tr>
+      </thead>
+      <tbody id="rolesBody">
+        <tr>
+          <td colspan="3" class="text-center text-muted">Loading roles…</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+fetch("/api/admin/roles/view")
+  .then(r => r.json())
+  .then(resp => {
+    const tbody = document.getElementById("rolesBody");
+    tbody.innerHTML = "";
+
+    if (!resp.ok || resp.data.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" class="text-center text-muted">
+            No roles found
+          </td>
+        </tr>`;
+      return;
+    }
+
+    resp.data.forEach(role => {
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${role.name}</strong></td>
+          <td>${role.description || "-"}</td>
+          <td>
+            <code style="white-space:normal; display:block;">
+              ${role.permissions.join(", ")}
+            </code>
+          </td>
+        </tr>`;
+    });
+  });
+</script>
+{% endblock %}
+

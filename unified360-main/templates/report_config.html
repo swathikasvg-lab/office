@@ -1,0 +1,547 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h2 class="mb-4 fw-bold">Download Reports</h2>
+
+<table class="table table-hover align-middle shadow-sm rounded-3 overflow-hidden">
+    <thead class="bg-light">
+        <tr class="text-secondary">
+            <th>Report ID</th>
+            <th>Title</th>
+            <th>Monitoring Type</th>
+            <th class="text-center">Run</th>
+        </tr>
+    </thead>
+    <tbody class="bg-white">
+
+        <tr>
+            <td>1001</td>
+            <td>Server Availability Report</td>
+            <td>Server</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1001', 'Server Availability Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1002</td>
+            <td>Server Performance Report</td>
+            <td>Server</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1002', 'Server Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1003</td>
+            <td>Desktop Performance Report</td>
+            <td>Desktop</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1003', 'Desktop Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1004</td>
+            <td>URL Performance Report</td>
+            <td>URL</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1004', 'URL Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1005</td>
+            <td>Bandwidth Utilization Report</td>
+            <td>SNMP</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1005', 'Bandwidth Utilization Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1006</td>
+            <td>Ping Performance Report</td>
+            <td>Ping</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1006', 'Ping Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1007</td>
+            <td>Port Performance Report</td>
+            <td>Port</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1007', 'Port Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1008</td>
+            <td>Fortigate VPN Performance Report</td>
+            <td>Fortigate</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1008', 'Fortigate VPN Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+        <tr>
+            <td>1009</td>
+            <td>Fortigate SD-WAN Performance Report</td>
+            <td>Fortigate</td>
+            <td class="text-center">
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openReportModal('1009', 'Fortigate SD-WAN Performance Report')"
+                        title="Run Report">
+                    <i data-lucide="play-circle"></i>
+                </button>
+            </td>
+        </tr>
+
+    </tbody>
+</table>
+
+{% include "modals/report_run.html" %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    lucide.createIcons();
+
+    // =====================================================
+    // HELPER: Reset dropdown without lingering event handlers
+    // =====================================================
+    function resetDropdown(id, placeholder = null) {
+        const old = document.getElementById(id);
+        const fresh = old.cloneNode(false);
+        if (placeholder !== null) {
+            fresh.innerHTML = placeholder;
+        }
+        old.parentNode.replaceChild(fresh, old);
+        return fresh;
+    }
+
+    // =====================================================
+    // SERVER REPORTS (1001 & 1002)
+    // =====================================================
+    function loadServerDropdowns() {
+
+        document.getElementById("customerBox").style.display = "block";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "block";
+
+        let customerSelect = resetDropdown(
+            "customerSelect",
+            '<option value="ALL">ALL</option>'
+        );
+        let instanceSelect = resetDropdown(
+            "instancesDropdown",
+            '<option value="ALL">ALL</option>'
+        );
+
+        instanceSelect.removeAttribute("multiple");
+        instanceSelect.size = 1;
+        fetch("/api/monitored-servers")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+
+                const servers = d.items;
+                const uniqueCustomers = [...new Set(servers.map(s => s.customer_name))];
+
+                uniqueCustomers.forEach(c => {
+                    customerSelect.innerHTML += `<option value="${c}">${c}</option>`;
+                });
+
+                function refreshInstances(customer) {
+                    instanceSelect.replaceChildren();
+                    instanceSelect.innerHTML = `<option value="ALL">ALL</option>`;
+
+                    const filtered = servers.filter(
+                        x => customer === "ALL" || x.customer_name === customer
+                    );
+
+                    filtered.forEach(s => {
+                        instanceSelect.innerHTML += `<option value="${s.instance}">${s.instance}</option>`;
+                    });
+                }
+
+                customerSelect.addEventListener("change", () => {
+                    refreshInstances(customerSelect.value);
+                });
+
+                refreshInstances("ALL");
+            });
+    }
+
+    // =====================================================
+    // DESKTOP REPORT (1003)
+    // =====================================================
+    function loadDesktopDropdowns() {
+
+        document.getElementById("customerBox").style.display = "block";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "block";
+
+        let customerSelect = resetDropdown("customerSelect", "");
+        let instanceSelect = resetDropdown("instancesDropdown", "");
+
+        instanceSelect.removeAttribute("multiple");
+        instanceSelect.size = 1;
+
+        fetch("/api/desktop/customers")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+
+                d.customers.forEach(c => {
+                    customerSelect.innerHTML += `<option value="${c}">${c}</option>`;
+                });
+
+                function refreshInstances(customer) {
+                    instanceSelect.replaceChildren();
+
+                    fetch(`/api/desktop/instances?customer=${customer}`)
+                        .then(r => r.json())
+                        .then(d => {
+                            if (!d.ok) return;
+
+                            d.hosts.forEach(h => {
+                                instanceSelect.innerHTML += `<option value="${h}">${h}</option>`;
+                            });
+                        });
+                }
+
+                customerSelect.addEventListener("change", () => {
+                    refreshInstances(customerSelect.value);
+                });
+
+                refreshInstances(customerSelect.value);
+            });
+    }
+ 
+
+    // ----------------------------------------------------
+    // URL
+    // ----------------------------------------------------
+    function loadURLDropdown() {
+        let customerSelect = resetDropdown("customerSelect", "");
+        let instanceSelect = resetDropdown("instancesDropdown", "");
+    
+        // Convert to MULTI-SELECT
+        instanceSelect.setAttribute("multiple", true);
+    
+        fetch("/api/url/list")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+    
+                d.urls.forEach(url => {
+                    instanceSelect.innerHTML += `<option value="${url.server}">${url.label}</option>`;
+                });
+            });
+    }
+
+
+    // =====================================================
+    // PING REPORT (1006)
+    // =====================================================
+    function loadPingDropdowns() {
+
+        document.getElementById("customerBox").style.display = "none";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "block";
+
+        let instanceSelect = resetDropdown("instancesDropdown", "");
+
+        instanceSelect.setAttribute("multiple", true);
+        instanceSelect.size = 8;
+
+        fetch("/api/ping/targets")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+
+                d.targets.forEach(item => {
+                    instanceSelect.innerHTML += `
+                        <option value="${item.url}">
+                            ${item.label}
+                        </option>`;
+                });
+            });
+    }
+
+
+    // ================================
+    // BANDWIDTH REPORT (1005)
+    // ================================
+    function loadBandwidthDropdowns() {
+        document.getElementById("customerSelect").parentElement.style.display = "none";
+        document.getElementById("templateBox").style.display = "block";
+        document.getElementById("deviceBox").style.display = "block";
+        document.getElementById("interfaceBox").style.display = "block";
+    
+        let templateSelect  = resetDropdown("templateSelect", "");
+        let deviceSelect    = resetDropdown("deviceSelect", "");
+        let interfaceSelect = resetDropdown("instancesDropdown", "");
+    
+        interfaceSelect.setAttribute("multiple", true);
+        interfaceSelect.size = 8;
+    
+        fetch("/api/bandwidth/snmp/targets")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+    
+                const items     = d.items || [];
+                const templates = d.templates || [];
+    
+                templates.forEach(t => {
+                    templateSelect.innerHTML += `<option value="${t}">${t}</option>`;
+                });
+    
+                function refreshDevices() {
+                    deviceSelect.innerHTML = "";
+                    interfaceSelect.innerHTML = "";
+    
+                    const selectedTemplate = templateSelect.value;
+    
+                    const filtered = items.filter(
+                        x => x.template_type === selectedTemplate
+                    );
+    
+                    const uniqueHosts = [...new Set(filtered.map(x => x.hostname))];
+    
+                    uniqueHosts.forEach(h => {
+                        deviceSelect.innerHTML += `<option value="${h}">${h}</option>`;
+                    });
+    
+                    refreshInterfaces();
+                }
+    
+                function refreshInterfaces() {
+                    interfaceSelect.innerHTML = "";
+    
+                    const selectedTemplate = templateSelect.value;
+                    const selectedHost     = deviceSelect.value;
+    
+                    const row = items.find(
+                        x => x.template_type === selectedTemplate && x.hostname === selectedHost
+                    );
+                    if (!row) return;
+    
+                    (row.interfaces || []).forEach(iface => {
+                        interfaceSelect.innerHTML += `<option value="${iface}">${iface}</option>`;
+                    });
+                }
+    
+                templateSelect.addEventListener("change", refreshDevices);
+                deviceSelect.addEventListener("change", refreshInterfaces);
+    
+                if (templates.length > 0) {
+                    templateSelect.value = templates[0];
+                    refreshDevices();
+                }
+            });
+    }
+
+
+
+    // =====================================================
+    // PORT REPORT (1007)
+    // =====================================================
+    function loadPortDropdowns() {
+    
+        document.getElementById("customerBox").style.display = "none";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "block";
+
+        let customerSelect = resetDropdown("customerSelect", "");
+        let instanceSelect = resetDropdown("instancesDropdown", "");
+
+        instanceSelect.setAttribute("multiple", true);
+        instanceSelect.size = 8;
+
+        fetch("/api/port/servers")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+
+                const servers = d.servers;
+
+                servers.forEach(s => {
+                    customerSelect.innerHTML += `<option value="${s}">${s}</option>`;
+                });
+
+                function refreshPorts(server) {
+                    instanceSelect.replaceChildren();
+
+                    fetch(`/api/port/ports?server=${server}`)
+                        .then(r => r.json())
+                        .then(d => {
+                            if (!d.ok) return;
+
+                            d.ports.forEach(p => {
+                                const val = `${server}|${p}`;
+                                const label = `${server} : ${p}`;
+                                instanceSelect.innerHTML += `<option value="${val}">${label}</option>`;
+                            });
+                        });
+                }
+
+                customerSelect.addEventListener("change", () => {
+                    refreshPorts(customerSelect.value);
+                });
+
+                refreshPorts(servers[0]);
+            });
+    }
+
+    // =====================================================
+    // FORTIGATE VPN (1008)
+    // =====================================================
+    function loadFortigateDropdown() {
+
+        document.getElementById("customerBox").style.display = "none";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "block";
+
+        // Disable instance field so ALL does NOT override device_name
+        document.getElementById("instancesDropdown").disabled = true;
+
+        let deviceSelect = resetDropdown("deviceSelect", '');
+
+        fetch('/api/fortigate/devices')
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+                if (!d.devices || d.devices.length === 0) return;
+
+                d.devices.forEach(dev => {
+                    deviceSelect.innerHTML += `<option value="${dev}">${dev}</option>`;
+                });
+
+                deviceSelect.value = d.devices[0];
+            });
+    }
+
+    // =====================================================
+    // FORTIGATE SD-WAN (1009)
+    // SAME AS 1008
+    // =====================================================
+    function loadFortigateSDWAN() {
+
+        document.getElementById("customerBox").style.display = "none";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "block";
+
+        // Disable instance so ALL is never posted
+        document.getElementById("instancesDropdown").disabled = true;
+
+        let deviceSelect = resetDropdown("deviceSelect", '');
+
+        fetch('/api/fortigate/devices')
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) return;
+                if (!d.devices || d.devices.length === 0) return;
+
+                d.devices.forEach(dev => {
+                    deviceSelect.innerHTML += `<option value="${dev}">${dev}</option>`;
+                });
+
+                deviceSelect.value = d.devices[0];
+            });
+    }
+
+    // =====================================================
+    // MODAL HANDLER
+    // =====================================================
+    window.openReportModal = function (reportId, reportTitle) {
+
+        document.getElementById("report_id").value = reportId;
+        document.getElementById("reportTitle").innerText = reportTitle;
+
+        // Reset instance disable state for all other reports
+        document.getElementById("instancesDropdown").disabled = false;
+
+        // Default visibility reset
+        document.getElementById("customerBox").style.display = "block";
+        document.getElementById("templateBox").style.display = "none";
+        document.getElementById("deviceBox").style.display = "none";
+        document.getElementById("interfaceBox").style.display = "block";
+
+        if (reportId === "1003") {
+            loadDesktopDropdowns();
+        }
+        else if (reportId === "1004") {
+            loadURLDropdown();
+        }
+        else if (reportId === "1005") {
+            loadBandwidthDropdowns();
+        }
+        else if (reportId === "1006") {
+            loadPingDropdowns();
+        }
+        else if (reportId === "1007") {
+            loadPortDropdowns();
+        }
+        else if (reportId === "1008") {
+            loadFortigateDropdown();
+        }
+        else if (reportId === "1009") {
+            loadFortigateSDWAN();
+        }
+        else {
+            loadServerDropdowns();
+        }
+
+        new bootstrap.Modal(document.getElementById("reportModal")).show();
+    };
+
+});
+</script>
+{% endblock %}
+

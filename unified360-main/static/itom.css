@@ -1,0 +1,133 @@
+.itom-page .table tbody tr.table-primary td {
+  --bs-table-bg: #e8f1ff;
+}
+
+.itom-hero {
+  border: 0;
+  background: linear-gradient(135deg, #f1f6fb 0%, #e6eef8 100%);
+}
+
+.itom-kpi .card-body {
+  padding: 0.9rem 1rem;
+}
+
+.kpi-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4f6275;
+}
+
+.kpi-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #12314f;
+}
+
+#selectedAppMeta {
+  white-space: normal;
+}
+
+#dependencyGraph {
+  height: 430px;
+  width: 100%;
+  border: 1px solid #dee5ef;
+  border-radius: 0.6rem;
+  background: radial-gradient(circle at 15% 15%, #f7faff 0%, #f2f6fb 35%, #ebf1f7 100%);
+}
+
+#graphToolbar .form-select {
+  width: 170px;
+}
+
+#itomMsg {
+  margin-bottom: 0.75rem;
+}
+
+.legend-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  margin-right: 0.35rem;
+  color: #fff;
+}
+
+.legend-chip.up {
+  background: #26b96f;
+}
+
+.legend-chip.degraded {
+  background: #4ea0f4;
+}
+
+.legend-chip.impacted {
+  background: #f2b64a;
+  color: #283444;
+}
+
+.legend-chip.down {
+  background: #df4d52;
+}
+
+.impact-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.impact-list li {
+  font-size: 0.87rem;
+  margin-bottom: 0.3rem;
+}
+
+.itom-badge-line {
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.35rem;
+  margin-bottom: 0.3rem;
+  border: 1px solid #d7e0ea;
+  background: #f6f9fc;
+}
+
+.itom-badge-line.danger {
+  border-color: #f0c3c6;
+  background: #fff0f1;
+  color: #8f2f34;
+}
+
+.itom-suggestion {
+  background: #f8fbff;
+}
+
+.itom-scroll {
+  max-height: 72vh;
+}
+
+.itom-scroll-sm {
+  max-height: 420px;
+}
+
+.itom-scroll-xs {
+  max-height: 190px;
+}
+
+#servicesTbody .badge,
+#appHealthBadge {
+  min-width: 88px;
+  text-align: center;
+}
+
+@media (max-width: 991px) {
+  #dependencyGraph {
+    height: 320px;
+  }
+
+  .itom-scroll,
+  .itom-scroll-sm,
+  .itom-scroll-xs {
+    max-height: none;
+  }
+}

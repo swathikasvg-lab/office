@@ -1,0 +1,410 @@
+{% extends "layout.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='itom.css') }}">
+
+<div class="itom-page">
+  <div class="itom-hero card shadow-sm mb-3">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h2 class="m-0">ITOM Enterprise Dashboard</h2>
+        <div class="text-muted small">Business application health, dependency graph, and impacted services.</div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <select id="customerFilter" class="form-select form-select-sm" style="width:270px;"></select>
+        <button id="refreshBtn" class="btn btn-sm btn-outline-secondary">
+          <i data-lucide="refresh-cw" width="14"></i> Refresh
+        </button>
+        <button id="openAppModalBtn" class="btn btn-sm btn-primary">
+          <i data-lucide="plus" width="14"></i> New Application
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="itomMsg" class="alert d-none py-2"></div>
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-3 small">
+      <span id="itamCoverageKpi" class="text-muted">ITAM coverage: -</span>
+      <span id="itamBindingKpi" class="text-muted">ITAM binding: -</span>
+      <span id="itamGapKpi" class="text-muted">ITAM gaps: -</span>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="itom-kpi card shadow-sm">
+        <div class="card-body">
+          <div class="kpi-title">Applications</div>
+          <div id="kpiApps" class="kpi-value">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="itom-kpi card shadow-sm">
+        <div class="card-body">
+          <div class="kpi-title">Services</div>
+          <div id="kpiServices" class="kpi-value">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="itom-kpi card shadow-sm">
+        <div class="card-body">
+          <div class="kpi-title">Impacted</div>
+          <div id="kpiImpacted" class="kpi-value text-warning-emphasis">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="itom-kpi card shadow-sm">
+        <div class="card-body">
+          <div class="kpi-title">Down</div>
+          <div id="kpiDown" class="kpi-value text-danger-emphasis">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Business Applications</strong>
+          <span id="appCount" class="badge text-bg-secondary">0</span>
+        </div>
+        <div class="table-responsive itom-scroll">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Name</th>
+                <th>Tier</th>
+                <th style="width:68px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="appsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-9">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <strong id="selectedAppTitle">Select an application</strong>
+            <div id="selectedAppMeta" class="small text-muted">No application selected.</div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span id="appHealthBadge" class="badge text-bg-secondary">N/A</span>
+            <button id="openServiceModalBtn" class="btn btn-sm btn-outline-primary" disabled>
+              <i data-lucide="plus" width="14"></i> Service
+            </button>
+            <button id="openBindingModalBtn" class="btn btn-sm btn-outline-primary" disabled>
+              <i data-lucide="link-2" width="14"></i> Binding
+            </button>
+            <button id="openDepModalBtn" class="btn btn-sm btn-outline-primary" disabled>
+              <i data-lucide="git-merge" width="14"></i> Dependency
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-2">
+          <div id="graphToolbar" class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div id="graphLegend" class="small">
+              <span class="legend-chip up">UP</span>
+              <span class="legend-chip degraded">DEGRADED</span>
+              <span class="legend-chip impacted">IMPACTED</span>
+              <span class="legend-chip down">DOWN</span>
+              <span class="text-muted ms-2">Dashed amber edge = ITAM suggested dependency</span>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <select id="graphFilter" class="form-select form-select-sm">
+                <option value="all">All Services</option>
+                <option value="attention">Needs Attention</option>
+                <option value="critical_path">Critical Path</option>
+                <option value="down_only">Down Only</option>
+              </select>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="toggleBindings" checked>
+                <label class="form-check-label small" for="toggleBindings">Bindings</label>
+              </div>
+              <button id="saveLayoutBtn" class="btn btn-sm btn-outline-secondary">
+                <i data-lucide="save" width="14"></i> Save Layout
+              </button>
+              <button id="resetLayoutBtn" class="btn btn-sm btn-outline-secondary">
+                <i data-lucide="rotate-ccw" width="14"></i> Reset Layout
+              </button>
+            </div>
+          </div>
+          <div id="dependencyGraph"></div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-7">
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <strong>Service Health Matrix</strong>
+            </div>
+            <div class="table-responsive itom-scroll-sm">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Service</th>
+                    <th>Type</th>
+                    <th>Criticality</th>
+                    <th>Health</th>
+                    <th style="width:68px;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="servicesTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <div class="card shadow-sm mb-3">
+            <div class="card-header">
+              <strong>Selected Node Impact</strong>
+            </div>
+            <div class="card-body">
+              <div id="impactTitle" class="fw-semibold">Select a service node in graph</div>
+              <div id="impactMeta" class="small text-muted mb-2">Impact path and reasons will appear here.</div>
+              <ul id="impactList" class="impact-list"></ul>
+            </div>
+          </div>
+
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <strong>Bindings & Dependencies</strong>
+            </div>
+            <div class="card-body p-2">
+              <div class="small fw-semibold mb-1">Bindings</div>
+              <div class="table-responsive mb-2 itom-scroll-xs">
+                <table class="table table-sm align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Service</th>
+                      <th>Monitor</th>
+                      <th style="width:56px;">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bindingsTbody"></tbody>
+                </table>
+              </div>
+
+              <div class="small fw-semibold mb-1">Dependencies</div>
+              <div class="table-responsive itom-scroll-xs">
+                <table class="table table-sm align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Parent</th>
+                      <th>Child</th>
+                      <th>Type</th>
+                      <th style="width:56px;">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="depsTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card shadow-sm mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <strong>Binding Intelligence</strong>
+              <div class="d-flex gap-2">
+                <button id="runBindingQualityBtn" class="btn btn-sm btn-outline-secondary" disabled>
+                  <i data-lucide="shield-check" width="14"></i> Quality
+                </button>
+                <button id="runBindingSuggestBtn" class="btn btn-sm btn-outline-primary" disabled>
+                  <i data-lucide="sparkles" width="14"></i> Suggestions
+                </button>
+              </div>
+            </div>
+            <div class="card-body p-2">
+              <div id="bindingQualitySummary" class="small text-muted mb-2">Run Quality to detect stale bindings.</div>
+              <div id="bindingQualityList" class="small mb-3"></div>
+              <div class="small fw-semibold mb-1">Live Alert Suggestions</div>
+              <div id="bindingSuggestionList" class="small"></div>
+              <hr class="my-3">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <div class="small fw-semibold">ITAM Dependency Suggestions</div>
+                <div class="d-flex gap-2">
+                  <button id="runItamDepSuggestBtn" class="btn btn-sm btn-outline-secondary" disabled>
+                    <i data-lucide="git-branch-plus" width="14"></i> Preview
+                  </button>
+                  <button id="applyItamDepSuggestBtn" class="btn btn-sm btn-outline-primary" disabled>
+                    <i data-lucide="check" width="14"></i> Apply
+                  </button>
+                </div>
+              </div>
+              <div id="itamDepSuggestSummary" class="small text-muted mb-1">Preview ITAM-derived service dependencies.</div>
+              <div id="itamDepSuggestList" class="small"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="appModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="appForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Create Business Application</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Customer</label>
+            <select id="appCustomerId" class="form-select" required></select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Name</label>
+            <input id="appName" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Code</label>
+            <input id="appCode" class="form-control">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Owner</label>
+            <input id="appOwner" class="form-control">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Tier</label>
+            <select id="appTier" class="form-select">
+              <option value="">Select</option>
+              <option value="tier-1">Tier-1</option>
+              <option value="tier-2">Tier-2</option>
+              <option value="tier-3">Tier-3</option>
+            </select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Description</label>
+            <textarea id="appDescription" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="serviceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="serviceForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Service</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Service Name</label>
+            <input id="serviceName" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Type</label>
+            <input id="serviceType" class="form-control" placeholder="api, db, queue, frontend...">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Criticality</label>
+            <select id="serviceCriticality" class="form-select">
+              <option value="critical">critical</option>
+              <option value="high" selected>high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Runbook URL (optional)</label>
+            <input id="serviceRunbook" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="bindingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="bindingForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Monitor Binding</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Service</label>
+            <select id="bindingServiceId" class="form-select" required></select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Monitor Type</label>
+            <select id="bindingMonitorType" class="form-select" required></select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Monitor Reference</label>
+            <select id="bindingMonitorRef" class="form-select" required></select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="depModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="depForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Service Dependency</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Parent Service</label>
+            <select id="depParentId" class="form-select" required></select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Child Service</label>
+            <select id="depChildId" class="form-select" required></select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Dependency Type</label>
+            <select id="depType" class="form-select">
+              <option value="hard" selected>hard</option>
+              <option value="soft">soft</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+<script src="{{ url_for('static', filename='itom_applications.js') }}"></script>
+{% endblock %}

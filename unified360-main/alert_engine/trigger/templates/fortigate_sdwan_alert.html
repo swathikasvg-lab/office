@@ -1,0 +1,16 @@
+<h2>Fortigate SDWAN Link Alert</h2>
+
+<b>Firewall :</b> {{ hostname }} <br>
+<b>Link :</b> {{ link_name }} <br><br>
+
+{% if metric and value is not none %}
+<p><strong>Metric:</strong> {{ metric }} = <b>{{ value }}</b></p>
+{% else %}
+<p><strong>Alert:</strong> SDWAN link condition matched.</p>
+{% endif %}
+
+<b>Time :</b> {{ alert_time_ist }} <br><br>
+
+Regards,<br>
+Autointelli Notifications
+

@@ -1,0 +1,482 @@
+{# templates/monitoring_url.html #}
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">URL Monitoring</h1>
+
+  <div class="d-flex gap-2 align-items-center">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name or URL…" style="width:320px;">
+
+    {% if can('edit_urls') %}
+    <button id="addUrlBtn"
+            class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add URL
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>Monitoring Server</th>
+          <th>URL</th>
+          <th>Method</th>
+          <th>Timeout</th>
+          <th>Expected</th>
+          <th>SSL</th>
+          <th style="width:140px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+{% if can('edit_urls') %}
+<!-- ================= Drawer ================= -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add URL Monitor</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Friendly Name</label>
+        <input name="name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="monitoringServer" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">URL</label>
+        <input name="url" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">HTTP Method</label>
+        <select name="http_method" class="form-select">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Follow Redirects</label>
+        <select name="follow_redirects" class="form-select">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Certificate Expiry Monitoring</label>
+        <select name="check_cert_expiry" class="form-select">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Timeout (seconds)</label>
+        <input name="timeout" type="number" min="1" max="120" value="5" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Expected Status Code</label>
+        <input name="expected_status_code" type="number" value="200" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">String Match (Optional)</label>
+        <input name="response_string_match" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <button class="btn btn-outline-secondary w-100 text-start"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#advancedOptions"
+                aria-expanded="false">
+          Advanced Options
+        </button>
+
+        <div id="advancedOptions" class="collapse mt-3 border rounded p-3 bg-light">
+          <label class="form-label">Username</label>
+          <input name="username" class="form-control">
+
+          <label class="form-label mt-3">Password</label>
+          <input name="password" type="password" class="form-control">
+
+          <label class="form-label mt-3">Content-Type</label>
+          <input name="content_type" class="form-control">
+
+          <label class="form-label mt-3">Request Body</label>
+          <textarea name="request_body" rows="3" class="form-control"></textarea>
+        </div>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const formErrors = document.getElementById("formErrors");
+
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringServer = document.getElementById("monitoringServer");
+  const addBtn = document.getElementById("addUrlBtn");
+
+  let debounce;
+  let state = { page: 1, per_page: 25, q: "", customer_id: "" };
+
+  async function loadCustomers(selectEl, selected=null, includeAll=false) {
+    if (!selectEl) return;
+
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    selectEl.innerHTML = includeAll
+      ? "<option value=''>All Customers</option>"
+      : "<option value='' disabled selected>Select Customer</option>";
+
+    if (!d.items || !d.items.length) {
+      selectEl.innerHTML = "<option disabled>No customers found</option>";
+      return;
+    }
+
+    d.items.forEach(c => {
+      selectEl.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${c.cid}">${c.acct_id} — ${c.name}</option>`
+      );
+    });
+
+    if (selected !== null && selected !== undefined && selected !== "") {
+      selectEl.value = String(selected);
+    }
+  }
+
+  async function loadMonitoringServers(selected=null) {
+    if (!monitoringServer) return;
+
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+
+    monitoringServer.innerHTML = "<option value='' disabled selected>Select Monitoring Server</option>";
+
+    if (!d.items || !d.items.length) {
+      monitoringServer.innerHTML = "<option disabled>No monitoring servers found</option>";
+      return;
+    }
+
+    d.items.forEach(s => {
+      monitoringServer.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${s.ip_address}">${s.ip_address}</option>`
+      );
+    });
+
+    if (selected) monitoringServer.value = selected;
+  }
+
+  function resetFormForAdd() {
+    if (!form) return;
+
+    formErrors.textContent = "";
+    editIdEl.value = "";
+    document.getElementById("drawerTitle").textContent = "Add URL Monitor";
+
+    // Collapse advanced options (if opened earlier)
+    const adv = document.getElementById("advancedOptions");
+    if (adv && adv.classList.contains("show")) {
+      bootstrap.Collapse.getOrCreateInstance(adv).hide();
+    }
+
+    // Reset inputs (keeps select options)
+    form.reset();
+
+    // Defaults (in case browser doesn't restore select defaults as expected)
+    if (form.http_method) form.http_method.value = "GET";
+    if (form.follow_redirects) form.follow_redirects.value = "true";
+    if (form.check_cert_expiry) form.check_cert_expiry.value = "false";
+    if (form.timeout) form.timeout.value = 5;
+    if (form.expected_status_code) form.expected_status_code.value = 200;
+
+    // Ensure placeholders selected
+    if (customerSelect) customerSelect.value = "";
+    if (monitoringServer) monitoringServer.value = "";
+  }
+
+  async function load() {
+    const params = new URLSearchParams(state);
+    const r = await fetch(`/api/url-monitors?${params}`);
+    const d = await r.json();
+
+    const items = d.items || [];
+    rows.innerHTML = "";
+
+    if (!items.length) {
+      rows.innerHTML =
+        `<tr><td colspan="9" class="text-center text-muted py-4">No results</td></tr>`;
+      pageMeta.textContent = "No results";
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+      return;
+    }
+
+    items.forEach(it => {
+      rows.insertAdjacentHTML(
+        "beforeend",
+        `
+        <tr>
+          <td>${it.name ?? ""}</td>
+          <td><strong>${it.customer_acct_id ?? ""}</strong><br><small>${it.customer_name ?? ""}</small></td>
+          <td>${it.monitoring_server ?? ""}</td>
+          <td>${it.url ?? ""}</td>
+          <td>${it.http_method ?? ""}</td>
+          <td>${(it.timeout ?? "")}s</td>
+          <td>${it.expected_status_code ?? ""}</td>
+          <td>${it.check_cert_expiry ? "Yes" : "No"}</td>
+          <td class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-secondary grafana"
+                    data-customer="${it.customer_name ?? ""}"
+                    data-url="${it.url ?? ""}">
+              <i data-lucide="bar-chart-2" width="16"></i>
+            </button>
+
+            <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+          </td>
+        </tr>
+        `
+      );
+    });
+
+    if (window.lucide) lucide.createIcons();
+    pageMeta.textContent = `Page ${d.page} of ${d.pages} • ${d.total}`;
+    prevBtn.disabled = (d.page || 1) <= 1;
+    nextBtn.disabled = (d.page || 1) >= (d.pages || 1);
+  }
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    // ---------- Grafana ----------
+    if (btn.classList.contains("grafana")) {
+      const customer = btn.dataset.customer || "";
+      const url = btn.dataset.url || "";
+
+      const grafanaUrl =
+        `${GRAFANA_BASE}/d/urlmonitoring` +
+        `?var-customer=${encodeURIComponent(customer)}` +
+        `&var-url=${encodeURIComponent(url)}` +
+        `&kiosk`;
+
+      openGrafanaModal(grafanaUrl, `URL Monitoring — ${url}`);
+      return;
+    }
+
+    const id = btn.dataset.id;
+
+    if (btn.classList.contains("edit")) {
+      const res = await fetch(`/api/url-monitors/${id}`);
+      const { item } = await res.json();
+
+      editIdEl.value = item.id;
+      document.getElementById("drawerTitle").textContent = "Edit URL Monitor";
+      formErrors.textContent = "";
+
+      await loadCustomers(customerSelect, item.customer_id);
+      await loadMonitoringServers(item.monitoring_server);
+
+      form.name.value = item.name || "";
+      form.url.value = item.url || "";
+      form.http_method.value = item.http_method || "GET";
+      form.follow_redirects.value = item.follow_redirects ? "true" : "false";
+      form.check_cert_expiry.value = item.check_cert_expiry ? "true" : "false";
+      form.timeout.value = item.timeout || 5;
+      form.expected_status_code.value = item.expected_status_code || 200;
+      form.response_string_match.value = item.response_string_match || "";
+      form.username.value = item.username || "";
+      form.password.value = item.password || "";
+      form.content_type.value = item.content_type || "";
+      form.request_body.value = item.request_body || "";
+
+      drawer.show();
+      return;
+    }
+
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete URL monitor?")) return;
+      await fetch(`/api/url-monitors/${id}`, { method:"DELETE" });
+      load();
+      return;
+    }
+  };
+
+  form?.addEventListener("submit", async e => {
+    e.preventDefault();
+    formErrors.textContent = "";
+
+    if (!customerSelect.value) {
+      formErrors.textContent = "Please select a customer.";
+      return;
+    }
+    if (!monitoringServer.value) {
+      formErrors.textContent = "Please select a monitoring server.";
+      return;
+    }
+
+    const payload = {
+      customer_id: parseInt(customerSelect.value, 10),
+      name: form.name.value.trim(),
+      monitoring_server: monitoringServer.value,
+      url: form.url.value.trim(),
+      http_method: form.http_method.value,
+      follow_redirects: form.follow_redirects.value === "true",
+      check_cert_expiry: form.check_cert_expiry.value === "true",
+      timeout: parseInt(form.timeout.value, 10),
+      expected_status_code: parseInt(form.expected_status_code.value, 10),
+      response_string_match: form.response_string_match.value || null,
+      username: form.username.value || null,
+      password: form.password.value || null,
+      content_type: form.content_type.value || null,
+      request_body: form.request_body.value || null
+    };
+
+    const id = editIdEl.value;
+    const apiUrl = id ? `/api/url-monitors/${id}` : "/api/url-monitors";
+    const method = id ? "PUT" : "POST";
+
+    const res = await fetch(apiUrl, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      formErrors.textContent = "Failed to save the URL monitor";
+      return;
+    }
+
+    drawer.hide();
+    resetFormForAdd();
+    load();
+  });
+
+  customerFilter.onchange = () => {
+    state.customer_id = customerFilter.value;
+    state.page = 1;
+    load();
+  };
+
+  searchInput.oninput = e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 300);
+  };
+
+  prevBtn.onclick = () => {
+    if (state.page > 1) state.page--;
+    load();
+  };
+
+  nextBtn.onclick = () => {
+    state.page++;
+    load();
+  };
+
+  // --- FIX: Ensure dropdowns are populated for "Add URL" drawer ---
+  // Pre-load dropdowns so the offcanvas shows options immediately.
+  await loadCustomers(customerFilter, null, true);
+  await loadCustomers(customerSelect);
+  await loadMonitoringServers();
+
+  // When opening drawer via "+ Add URL", reset stale edit data.
+  addBtn?.addEventListener("click", () => {
+    resetFormForAdd();
+    // If options were cleared for any reason, reload them.
+    if (!customerSelect.options.length || customerSelect.options.length <= 1) loadCustomers(customerSelect);
+    if (!monitoringServer.options.length || monitoringServer.options.length <= 1) loadMonitoringServers();
+  });
+
+  // Also clean up when drawer closes
+  drawerEl?.addEventListener("hidden.bs.offcanvas", () => {
+    formErrors.textContent = "";
+    // Don't force reset after edit close (user might re-open edit),
+    // but safe to clear if no editId.
+    if (!editIdEl.value) resetFormForAdd();
+  });
+
+  await load();
+});
+</script>
+
+{% endblock %}
+

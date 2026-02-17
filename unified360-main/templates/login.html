@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sign in — Autointelli</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Poppins font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
+
+  <!-- Page styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="auth-body">
+
+  <div class="auth-shell">
+    <!-- Left: Light branding panel -->
+    <aside class="brand-panel">
+      <div class="brand-inner">
+        <div class="brand-logo">
+          <img src="https://autointelli.com/assets/logo-BemJltwI.png" alt="Autointelli" />
+        </div>
+
+        <h1 class="brand-welcome">Welcome to Autointelli</h1>
+        <p class="brand-tagline">Unified Infrastructure &amp; Monitoring Platform</p>
+
+        <p class="brand-desc">
+          Autointelli Observability is a unified AIOps platform that leverages machine learning and automation
+          to monitor hybrid IT environments, correlate events, reduce alert noise, and enable rapid incident
+          resolution for efficient operations.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Right: Dark glass form panel -->
+    <main class="form-panel">
+      <div class="form-card">
+        <h2 class="form-title">Sign in</h2>
+
+        <!-- flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}" novalidate>
+          <!-- Username -->
+          <div class="field">
+            <div class="control with-icon">
+              <i class="icon-left" data-lucide="user"></i>
+              <input type="text"
+                     name="username"
+                     placeholder="Username"
+                     autocomplete="username"
+                     required
+                     aria-label="Username">
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div class="field">
+            <div class="control with-icon">
+              <i class="icon-left" data-lucide="lock"></i>
+              <input id="password"
+                     type="password"
+                     name="password"
+                     placeholder="Password"
+                     autocomplete="current-password"
+                     required
+                     aria-label="Password">
+              <button type="button" class="icon-right toggle-pass" aria-label="Show password">
+                <i data-lucide="eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <button class="btn-primary" type="submit">Sign in</button>
+
+          <div class="legal">© Autointelli. All rights reserved.</div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Initialize icons
+    lucide.createIcons();
+
+    // Password toggle
+    const toggle = document.querySelector('.toggle-pass');
+    const pwd = document.getElementById('password');
+    toggle.addEventListener('click', () => {
+      const isText = pwd.type === 'text';
+      pwd.type = isText ? 'password' : 'text';
+      toggle.innerHTML = isText ? '<i data-lucide="eye"></i>' : '<i data-lucide="eye-off"></i>';
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
+

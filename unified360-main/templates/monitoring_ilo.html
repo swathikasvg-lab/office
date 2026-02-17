@@ -1,0 +1,322 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">HP iLO Monitoring</h1>
+
+  <div class="d-flex gap-2">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by IP…" style="width:280px;">
+
+    {% if can("edit_ilo") %}
+    <button id="addBtn" class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#iloDrawer">
+      + Add Configuration
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Device IP</th>
+          <th>Monitoring Server</th>
+          <th>SNMP Version</th>
+          <th>Community</th>
+          <th>Port</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div id="pageMeta" class="text-muted small"></div>
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+{% if can("edit_ilo") %}
+<!-- Drawer -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="iloDrawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add HP iLO Configuration</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <form id="iloForm" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Device IP</label>
+        <input name="device_ip" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="iloMonitoringServer"
+                name="monitoring_server"
+                class="form-select"
+                required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP Version</label>
+        <select class="form-select" disabled>
+          <option selected>v2c</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Community</label>
+        <input name="community" type="password" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">SNMP Port</label>
+        <input name="port" type="number" value="161" class="form-control">
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit"
+                class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+const CAN_EDIT_ILO = {{ "true" if can("edit_ilo") else "false" }};
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  const rows = document.getElementById("rows");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("iloMonitoringServer");
+
+  const drawerEl = document.getElementById("iloDrawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const iloForm = document.getElementById("iloForm");
+  const editIdEl = document.getElementById("editId");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const formErrors = document.getElementById("formErrors");
+  const addBtn = document.getElementById("addBtn");
+
+  let debounce;
+  let state = { page:1, per_page:25, q:"", customer_id:"" };
+
+  /* ---------- LOAD CUSTOMERS (SAFE) ---------- */
+  async function loadCustomers(selectEl, selected=null, includeAll=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+
+    selectEl.innerHTML = includeAll
+      ? '<option value="">All Customers</option>'
+      : '<option value="">Select Customer</option>';
+
+    if (!r.ok) return;
+
+    const d = await r.json();
+    (d.items || []).forEach(c => {
+      const o = document.createElement("option");
+      o.value = c.cid;
+      o.textContent = `${c.acct_id} — ${c.name}`;
+      selectEl.appendChild(o);
+    });
+
+    if (selected) selectEl.value = selected;
+  }
+
+  /* ---------- LOAD MONITORING SERVERS ---------- */
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+
+    monitoringSelect.innerHTML =
+      '<option value="">Select Monitoring Server</option>';
+
+    if (!r.ok) return;
+
+    const d = await r.json();
+    (d.items || []).forEach(p => {
+      monitoringSelect.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${p.ip_address}">${p.ip_address}</option>`
+      );
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  /* ---------- LOAD TABLE ---------- */
+  async function load() {
+    const r = await fetch(`/api/ilo-configs?${new URLSearchParams(state)}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+    pageMeta.textContent = "";
+
+    if (!d.items || !d.items.length) {
+      rows.innerHTML =
+        '<tr><td colspan="7" class="text-center text-muted py-4">No results</td></tr>';
+      return;
+    }
+
+    d.items.forEach(it => {
+      let actions = `
+        <button class="btn btn-sm btn-outline-secondary grafana"
+                data-customer="${it.customer_name}"
+                data-ilo="${it.device_ip}">
+          <i data-lucide="bar-chart-2" width="16"></i>
+        </button>
+      `;
+
+      if (CAN_EDIT_ILO) {
+        actions += `
+          <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+            <i data-lucide="edit-3" width="16"></i>
+          </button>
+          <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+            <i data-lucide="trash-2" width="16"></i>
+          </button>
+        `;
+      }
+
+      rows.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td><strong>${it.customer_acct_id}</strong><br>
+              <small class="text-muted">${it.customer_name}</small></td>
+          <td>${it.device_ip}</td>
+          <td>${it.monitoring_server}</td>
+          <td>${it.snmp_version}</td>
+          <td>${it.community ? "******" : ""}</td>
+          <td>${it.port}</td>
+          <td class="text-center">${actions}</td>
+        </tr>
+      `);
+    });
+
+    lucide.createIcons();
+  }
+
+  /* ---------- EVENTS ---------- */
+  prevBtn.onclick = () => { state.page = Math.max(1, state.page - 1); load(); };
+  nextBtn.onclick = () => { state.page++; load(); };
+
+  searchInput.oninput = e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      state.page = 1;
+      load();
+    }, 250);
+  };
+
+  customerFilter.onchange = () => {
+    state.customer_id = customerFilter.value;
+    state.page = 1;
+    load();
+  };
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    if (btn.classList.contains("grafana")) {
+      openGrafanaModal(
+        `${GRAFANA_BASE}/d/ilomonitoring`
+        + `?var-customer=${encodeURIComponent(btn.dataset.customer)}`
+        + `&var-agent_host=${encodeURIComponent(btn.dataset.ilo)}&kiosk`,
+        `HP iLO Monitoring — ${btn.dataset.ilo}`
+      );
+      return;
+    }
+
+    if (CAN_EDIT_ILO && btn.classList.contains("del")) {
+      if (!confirm("Delete this HP iLO configuration?")) return;
+      await fetch(`/api/ilo-configs/${btn.dataset.id}`, { method:"DELETE" });
+      load();
+      return;
+    }
+
+    if (CAN_EDIT_ILO && btn.classList.contains("edit")) {
+      const r = await fetch(`/api/ilo-configs/${btn.dataset.id}`);
+      const { item } = await r.json();
+
+      editIdEl.value = item.id;
+      drawerTitle.textContent = "Edit HP iLO Configuration";
+      formErrors.textContent = "";
+
+      iloForm.device_ip.value = item.device_ip;
+      iloForm.community.value = item.community || "";
+      iloForm.port.value = item.port || 161;
+
+      await loadCustomers(customerSelect, item.customer_id, false);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+    }
+  };
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      editIdEl.value = "";
+    });
+  }
+
+  if (drawerEl) {
+    drawerEl.addEventListener("show.bs.offcanvas", async () => {
+      if (!editIdEl.value) {
+        drawerTitle.textContent = "Add HP iLO Configuration";
+        formErrors.textContent = "";
+        iloForm.reset();
+        iloForm.port.value = 161;
+
+        await loadCustomers(customerSelect, null, false);
+        await loadProxies(null);
+      }
+    });
+  }
+
+  /* ---------- INIT ---------- */
+  loadCustomers(customerFilter, null, true);
+  load();
+});
+</script>
+
+{% endblock %}
+

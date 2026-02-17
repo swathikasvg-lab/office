@@ -1,0 +1,368 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="m-0">Port Monitoring</h1>
+
+  <div class="d-flex gap-2 align-items-center">
+    <select id="customerFilter" class="form-select" style="width:260px;">
+      <option value="">All Customers</option>
+    </select>
+
+    <input id="searchInput" type="text" class="form-control"
+           placeholder="Search by name, host, or server…" style="width:320px;">
+
+    {% if can("edit_ports") %}
+    <button class="btn btn-info text-white"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#drawer">
+      + Add Port Monitor
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Friendly Name</th>
+          <th>Customer</th>
+          <th>Host / IP</th>
+          <th>Protocol</th>
+          <th>Ports</th>
+          <th>Timeout</th>
+          <th>Monitoring Server</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+{% if can("edit_ports") %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="drawer">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="drawerTitle">Add Port Monitor</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <form id="form" class="row g-3">
+      <input type="hidden" id="editId">
+
+      <div class="col-12">
+        <label class="form-label">Customer</label>
+        <select id="customerSelect" class="form-select" required></select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Friendly Name</label>
+        <input name="friendly_name" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Host / IP</label>
+        <input name="host_ip" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Protocol</label>
+        <select name="protocol" class="form-select">
+          <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Ports</label>
+        <input name="ports" class="form-control" required>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Timeout</label>
+        <input name="timeout" type="number" value="5" class="form-control">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Monitoring Server</label>
+        <select id="monitoringSelect" class="form-select" required></select>
+      </div>
+
+      <div id="formErrors" class="text-danger small"></div>
+
+      <div class="col-12 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary"
+                data-bs-dismiss="offcanvas">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  /* ============================================================
+     ESC BLOCKER FOR GRAFANA IFRAME (best-effort)
+     - If iframe is same-origin, we can intercept Escape inside it.
+     - If cross-origin, browser blocks access; we still block Escape
+       at parent level when possible, but Grafana may still receive it.
+     ============================================================ */
+  let GRAFANA_HOST_MATCH = "";
+  try {
+    GRAFANA_HOST_MATCH = new URL(GRAFANA_BASE).host;
+  } catch (_err) {
+    GRAFANA_HOST_MATCH = "";
+  }
+  const hookedIframes = new WeakSet();
+
+  function isGrafanaIframe(el) {
+    if (!el || el.tagName !== "IFRAME") return false;
+    const src = el.getAttribute("src") || "";
+    if (GRAFANA_HOST_MATCH) return src.includes(GRAFANA_HOST_MATCH);
+    return src.includes(GRAFANA_BASE);
+  }
+
+  function hookGrafanaIframe(iframe) {
+    if (!isGrafanaIframe(iframe)) return;
+    if (hookedIframes.has(iframe)) return;
+    hookedIframes.add(iframe);
+
+    // Parent-level Escape block (only helps if keydown happens in parent)
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+
+      const active = document.activeElement;
+      const activeIsGrafana = active && active.tagName === "IFRAME" && isGrafanaIframe(active);
+      if (activeIsGrafana) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+
+    // Attempt to block Escape inside iframe (works only if same-origin)
+    iframe.addEventListener("load", () => {
+      try {
+        const w = iframe.contentWindow;
+        if (!w) return;
+
+        w.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
+      } catch (err) {
+        // Cross-origin -> cannot access iframe internals.
+      }
+    }, { once: true });
+  }
+
+  function scanAndHookGrafanaIframes() {
+    document.querySelectorAll("iframe").forEach(hookGrafanaIframe);
+  }
+
+  // Hook existing iframes + future injected iframes (e.g., by openGrafanaModal)
+  scanAndHookGrafanaIframes();
+  const mo = new MutationObserver(() => scanAndHookGrafanaIframes());
+  mo.observe(document.body, { childList: true, subtree: true });
+
+  /* ============================================================ */
+
+  const rows = document.getElementById("rows");
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+
+  const drawerEl = document.getElementById("drawer");
+  const drawer = drawerEl ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+
+  const form = document.getElementById("form");
+  const editIdEl = document.getElementById("editId");
+  const customerSelect = document.getElementById("customerSelect");
+  const monitoringSelect = document.getElementById("monitoringSelect");
+
+  let state = { q: "" };
+  let debounce;
+
+  async function loadCustomers(el, selected=null, all=false) {
+    const r = await fetch("/api/customers?per_page=1000");
+    const d = await r.json();
+
+    el.innerHTML = all
+      ? "<option value=''>All Customers</option>"
+      : "<option value=''>Select Customer</option>";
+
+    d.items.forEach(c => {
+      el.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${c.cid}">${c.acct_id} — ${c.name}</option>`
+      );
+    });
+
+    if (selected) el.value = selected;
+  }
+
+  async function loadProxies(selected=null) {
+    const r = await fetch("/api/proxy-servers?per_page=1000");
+    const d = await r.json();
+
+    monitoringSelect.innerHTML = "";
+    d.items.forEach(p => {
+      monitoringSelect.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${p.ip_address}">${p.ip_address}</option>`
+      );
+    });
+
+    if (selected) monitoringSelect.value = selected;
+  }
+
+  async function load() {
+    const params = new URLSearchParams();
+    if (state.q) params.append("q", state.q);
+    if (customerFilter.value) params.append("customer_id", customerFilter.value);
+
+    const r = await fetch(`/api/port-monitors?${params}`);
+    const d = await r.json();
+
+    rows.innerHTML = "";
+
+    if (!d.items.length) {
+      rows.innerHTML =
+        `<tr><td colspan="8" class="text-center text-muted">No results</td></tr>`;
+      return;
+    }
+
+    d.items.forEach(it => {
+      rows.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${it.friendly_name}</td>
+          <td>
+            <strong>${it.customer_acct_id || ""}</strong><br>
+            <small class="text-muted">${it.customer_name || ""}</small>
+          </td>
+          <td>${it.host_ip}</td>
+          <td>${it.protocol}</td>
+          <td>${it.ports}</td>
+          <td>${it.timeout}s</td>
+          <td>${it.monitoring_server}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary grafana"
+                    data-customer="${it.customer_name}"
+                    data-host="${it.host_ip}"
+                    data-port="${it.ports}">
+              <i data-lucide="bar-chart-2" width="16"></i>
+            </button>
+
+            {% if can("edit_ports") %}
+            <button class="btn btn-sm btn-light border edit" data-id="${it.id}">
+              <i data-lucide="edit-3" width="16"></i>
+            </button>
+            <button class="btn btn-sm btn-danger del" data-id="${it.id}">
+              <i data-lucide="trash-2" width="16"></i>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+      `);
+    });
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  rows.onclick = async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    if (btn.classList.contains("grafana")) {
+      const customer = btn.dataset.customer;
+      const host = btn.dataset.host;
+      const port = btn.dataset.port;
+
+      const grafanaUrl =
+        `${GRAFANA_BASE}/d/portmonitoring`
+        + `?var-customer=${encodeURIComponent(customer)}`
+        + `&var-host=${encodeURIComponent(host)}`
+        + `&var-port=${encodeURIComponent(port)}`
+        + `&kiosk`;
+
+      openGrafanaModal(
+        grafanaUrl,
+        `Port Monitoring — ${host}:${port}`
+      );
+      return;
+    }
+
+    if (btn.classList.contains("del")) {
+      if (!confirm("Delete this port monitor?")) return;
+      await fetch(`/api/port-monitor/${btn.dataset.id}`, { method:"DELETE" });
+      load();
+    }
+
+    if (btn.classList.contains("edit")) {
+      const r = await fetch(`/api/port-monitors`);
+      const d = await r.json();
+      const item = d.items.find(x => x.id == btn.dataset.id);
+
+      editIdEl.value = item.id;
+      form.friendly_name.value = item.friendly_name;
+      form.host_ip.value = item.host_ip;
+      form.protocol.value = item.protocol;
+      form.ports.value = item.ports;
+      form.timeout.value = item.timeout;
+
+      await loadCustomers(customerSelect, item.customer_id);
+      await loadProxies(item.monitoring_server);
+
+      drawer.show();
+    }
+  };
+
+  form?.addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const payload = {
+      id: editIdEl.value || null,
+      customer_id: customerSelect.value,
+      friendly_name: form.friendly_name.value,
+      host_ip: form.host_ip.value,
+      protocol: form.protocol.value,
+      ports: form.ports.value,
+      timeout: form.timeout.value,
+      monitoring_server: monitoringSelect.value
+    };
+
+    await fetch("/api/port-monitors", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    drawer.hide();
+    editIdEl.value = "";
+    form.reset();
+    load();
+  });
+
+  customerFilter.onchange = load;
+  searchInput.oninput = e => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      state.q = e.target.value.trim();
+      load();
+    }, 250);
+  };
+
+  loadCustomers(customerFilter, null, true);
+  if (customerSelect) loadCustomers(customerSelect);
+  if (monitoringSelect) loadProxies();
+  load();
+});
+</script>
+
+{% endblock %}
+

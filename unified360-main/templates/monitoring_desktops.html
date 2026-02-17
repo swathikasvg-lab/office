@@ -1,0 +1,407 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<style>
+  .status-badge { display:inline-block; padding:0.25rem 0.6rem; border-radius:0.5rem; font-weight:600; font-size:0.8rem; }
+  .status-up { background-color: #d1f5d3; color: #0a0; }
+  .status-down { background-color: #f8d7da; color: #c00; }
+
+  .usage-bar { width:90px; height:10px; border-radius:4px; background:#eee; position:relative; display:inline-block; vertical-align:middle; }
+  .usage-bar span { position:absolute; left:0; top:0; bottom:0; border-radius:4px; transition:width .5s; display:block; }
+
+  .small-muted { font-size:0.85rem; color:#666; }
+  .controls-row { gap: 12px; }
+  .table-actions { display:flex; gap:8px; align-items:center; }
+  .page-meta { font-size: 0.9rem; color:#666; }
+
+  /* sticky header */
+  .table-responsive { max-height: 64vh; overflow:auto; position:relative; }
+  thead.table-light th { position: sticky; top: 0; z-index: 5; background: #f8f9fa; }
+
+  /* sort indicators */
+  .col-sort { cursor: pointer; user-select: none; }
+  .sort-indicator { font-size: 0.7rem; margin-left: 6px; opacity: 0.6; }
+
+  /* customer dropdown counts */
+  .cust-badge { font-size: 0.75rem; margin-left:6px; color:#444; opacity:0.85; }
+
+  /* OS icon */
+  .os-icon { margin-right:6px; }
+
+  table.table { margin-bottom:0; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3 controls-row">
+  <h1 class="m-0">Desktop Monitoring</h1>
+  <div class="d-flex align-items-center table-actions">
+    <select id="customerFilter" class="form-select form-select-sm" style="width: 260px;">
+      <option value="All">All Customers</option>
+    </select>
+
+    <input id="searchInput" class="form-control form-control-sm ms-2" style="width:320px;" placeholder="Search by Hostname, OS">
+
+    <label class="form-check-label small ms-2">
+      <input type="checkbox" id="toggleInactive" class="form-check-input me-1" checked> Show desktops inactive &gt;7 days
+    </label>
+
+    <div class="btn-group ms-2">
+      <button id="compactBtn" class="btn btn-primary btn-sm">Compact View</button>
+      <button id="detailedBtn" class="btn btn-outline-primary btn-sm">Detailed View</button>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light" id="tableHead"></thead>
+      <tbody id="tableBody">
+        <tr><td colspan="14" class="text-center text-muted py-4">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-between p-2 border-top">
+    <div class="d-flex align-items-center gap-2">
+      <div class="page-meta" id="pageMeta">Page 0 of 0</div>
+      <select id="perPage" class="form-select form-select-sm" style="width:90px;">
+        <option value="10">10 / page</option>
+        <option value="25" selected>25 / page</option>
+        <option value="50">50 / page</option>
+      </select>
+    </div>
+
+    <div class="d-flex gap-1">
+      <button id="prevBtn" class="btn btn-outline-secondary btn-sm">Prev</button>
+      <button id="nextBtn" class="btn btn-outline-secondary btn-sm">Next</button>
+    </div>
+  </div>
+</div>
+
+<div class="text-end text-muted mt-2 small" id="refreshStatus"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // Elements
+  const customerFilter = document.getElementById("customerFilter");
+  const searchInput = document.getElementById("searchInput");
+  const toggleInactive = document.getElementById("toggleInactive");
+  const compactBtn = document.getElementById("compactBtn");
+  const detailedBtn = document.getElementById("detailedBtn");
+  const tableHead = document.getElementById("tableHead");
+  const tableBody = document.getElementById("tableBody");
+  const pageMeta = document.getElementById("pageMeta");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const perPageSel = document.getElementById("perPage");
+  const refreshStatus = document.getElementById("refreshStatus");
+
+  // --- Grafana config (same base as server page) ---
+  const GRAFANA_BASE = {{ GRAFANA_BASE_URL | tojson }};
+
+  // If your Grafana dashboard slugs are different, change them here:
+  function dashboardForOS(osRaw){
+    const os = (osRaw || "").toLowerCase();
+    if (os.includes("windows")) return "desktopmonitoring";
+    if (os.includes("mac") || os.includes("darwin") || os.includes("os x") || os.includes("macos")) return "desktopmonitoring";
+    if (os.includes("linux") || os.includes("ubuntu") || os.includes("centos") || os.includes("debian")) return "desktopmonitoring";
+    return "desktopmonitoring";
+  }
+
+  function openGrafana(url, title){
+    if (typeof openGrafanaModal === "function") openGrafanaModal(url, title);
+    else window.open(url, "_blank", "noopener");
+  }
+
+  // state
+  let view = localStorage.getItem("desktopView") || "compact";
+  let savedCustomer = localStorage.getItem("selectedDesktopCustomer") || "All";
+  let cachedCustomers = JSON.parse(localStorage.getItem("allDesktopCustomers") || "[]");
+
+  let page = 1;
+  let per_page = parseInt(perPageSel.value, 10);
+  let total_pages = 1;
+  let total_items = 0;
+  let q = "";
+  let show_inactive = toggleInactive.checked;
+  let dataItems = [];
+  let refreshTimer = null;
+
+  // sorting state (global)
+  let sort_by = "host";
+  let order = "asc";
+
+  // helpers
+  function debounce(fn, ms = 300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+  function timeAgo(iso){
+    if(!iso||iso==="N/A") return "N/A";
+    const dt=new Date(iso);
+    const sec=Math.round((Date.now()-dt.getTime())/1000);
+    if(sec<60) return `${sec}s ago`;
+    if(sec<3600) return `${Math.round(sec/60)}m ago`;
+    if(sec<86400) return `${Math.round(sec/3600)}h ago`;
+    return `${Math.round(sec/86400)}d ago`;
+  }
+  function getBarColor(v){ if(v>90)return"#d9534f"; if(v>75)return"#ff9800"; return"#5cb85c"; }
+
+  function colSpanCount(){
+    // compact: 8 cols + Actions = 9
+    // detailed: 13 cols + Actions = 14
+    return (view === "compact") ? 9 : 14;
+  }
+
+  // render table head with sortable columns
+  function renderHead(){
+    if(view==="compact"){
+      tableHead.innerHTML = `
+        <tr>
+          <th class="col-sort" data-sort="customer_name">Customer <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="host">Hostname <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="os">OS <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="cpu">CPU (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="mem">MEM (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="disk">Drive (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="last_update">Last Update <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="status">Status <span class="sort-indicator"></span></th>
+          <th class="text-center">Actions</th>
+        </tr>`;
+    } else {
+      tableHead.innerHTML = `
+        <tr>
+          <th class="col-sort" data-sort="customer_name">Customer <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="host">Hostname <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="os">OS <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="cpu">CPU (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="mem">MEM (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="disk">Drive (%) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="download">Download <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="upload">Upload <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="gateway_packet_loss">Gateway (loss / ms) <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="is_up_to_date">Up To Date <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="pending_updates">Pending <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="last_update">Last Update <span class="sort-indicator"></span></th>
+          <th class="col-sort" data-sort="status">Status <span class="sort-indicator"></span></th>
+          <th class="text-center">Actions</th>
+        </tr>`;
+    }
+
+    // attach click handlers
+    document.querySelectorAll("#tableHead .col-sort").forEach(th=>{
+      th.onclick = ()=> {
+        const field = th.getAttribute("data-sort");
+        if(!field) return;
+        if(sort_by === field) order = (order === "asc" ? "desc" : "asc");
+        else { sort_by = field; order = "asc"; }
+
+        localStorage.setItem("desktop_sort_by", sort_by);
+        localStorage.setItem("desktop_sort_order", order);
+        loadPage();
+        updateSortIndicators();
+      };
+    });
+
+    updateSortIndicators();
+  }
+
+  function updateSortIndicators(){
+    document.querySelectorAll("#tableHead .col-sort").forEach(th=>{
+      const f = th.getAttribute("data-sort");
+      const span = th.querySelector(".sort-indicator");
+      if(!span) return;
+      if(f === sort_by) span.textContent = (order === "asc" ? "▲" : "▼");
+      else span.textContent = "";
+    });
+  }
+
+  function renderRows(){
+    tableBody.innerHTML="";
+    if(!dataItems.length){
+      tableBody.innerHTML=`<tr><td colspan="${colSpanCount()}" class="text-center text-muted py-4">No results</td></tr>`;
+      return;
+    }
+
+    dataItems.forEach(it=>{
+      const stale=it.status==="DOWN";
+      const cpuVal=Number(it.cpu||0);
+      const memVal=Number(it.mem||0);
+      const diskVal=Number(it.disk||0);
+      const cpuColor=getBarColor(cpuVal);
+      const memColor=getBarColor(memVal);
+      const lastUpdateHuman=it.last_update&&it.last_update!=="N/A"?timeAgo(it.last_update):"N/A";
+
+      const host = it.hostname || it.host || "";
+      const cust = it.customer_name || "UNKNOWN";
+      const os = it.os || "";
+
+      const grafanaBtn = `
+        <button class="btn btn-sm btn-outline-secondary grafana"
+          data-customer="${cust}"
+          data-host="${host}"
+          data-os="${os}">
+          <i data-lucide="bar-chart-2" width="16"></i>
+        </button>`;
+
+      const row = (view==="compact") ? `
+        <tr>
+          <td>${cust}</td>
+          <td>${host}</td>
+          <td>${os || "—"}</td>
+          <td><div class="usage-bar"><span style="width:${cpuVal}%;background:${cpuColor}"></span></div><span class="small-muted ms-2">${cpuVal.toFixed(1)}%</span></td>
+          <td><div class="usage-bar"><span style="width:${memVal}%;background:${memColor}"></span></div><span class="small-muted ms-2">${memVal.toFixed(1)}%</span></td>
+          <td>${isFinite(diskVal)?diskVal.toFixed(1)+"%":"—"}</td>
+          <td>${lastUpdateHuman}</td>
+          <td><span class="status-badge ${stale?"status-down":"status-up"}">${stale?"DOWN":"UP"}</span></td>
+          <td class="text-center">${grafanaBtn}</td>
+        </tr>` :
+        `<tr>
+          <td>${cust}</td>
+          <td>${host}</td>
+          <td>${os||"—"}</td>
+          <td><div class="usage-bar"><span style="width:${cpuVal}%;background:${cpuColor}"></span></div><span class="small-muted ms-2">${cpuVal.toFixed(1)}%</span></td>
+          <td><div class="usage-bar"><span style="width:${memVal}%;background:${memColor}"></span></div><span class="small-muted ms-2">${memVal.toFixed(1)}%</span></td>
+          <td>${isFinite(diskVal)?diskVal.toFixed(1)+"%":"—"}</td>
+          <td>${it.download||"—"}</td>
+          <td>${it.upload||"—"}</td>
+          <td>${(it.gateway_packet_loss!=null?it.gateway_packet_loss+"%":"—")}/${(it.gateway_response_ms!=null?it.gateway_response_ms+"ms":"—")}</td>
+          <td>${it.is_up_to_date? "Yes":"No"}</td>
+          <td>${it.pending_updates||0}</td>
+          <td>${lastUpdateHuman}</td>
+          <td><span class="status-badge ${stale?"status-down":"status-up"}">${stale?"DOWN":"UP"}</span></td>
+          <td class="text-center">${grafanaBtn}</td>
+        </tr>`;
+
+      tableBody.insertAdjacentHTML("beforeend", row);
+    });
+
+    if(window.lucide) lucide.createIcons();
+  }
+
+  // Grafana click handler (event delegation)
+  tableBody.addEventListener("click", (e)=>{
+    const btn = e.target.closest(".grafana");
+    if(!btn) return;
+
+    const dash = dashboardForOS(btn.dataset.os);
+    const url =
+      `${GRAFANA_BASE}/d/${dash}` +
+      `?var-customer=${encodeURIComponent(btn.dataset.customer || "")}` +
+      `&var-desktop=${encodeURIComponent(btn.dataset.host || "")}` +
+      `&kiosk`;
+
+    openGrafana(url, `Desktop Monitoring — ${btn.dataset.host || ""}`);
+  });
+
+  // populate customers using customers_meta (active first)
+  function populateCustomersFromAPI(metaList){
+    if(!Array.isArray(metaList) || !metaList.length) {
+      const stored = cachedCustomers || [];
+      const html = `<option value="All">All Customers</option>` + stored.map(c=>`<option value="${c}">${c}</option>`).join("");
+      customerFilter.innerHTML = html;
+      if(stored.includes(savedCustomer)) customerFilter.value = savedCustomer;
+      return;
+    }
+
+    const html = [`<option value="All">All Customers</option>`];
+    metaList.forEach(m=>{
+      html.push(`<option value="${m.name}">${m.name} <span class="cust-badge">(${m.active}/${m.total})</span></option>`);
+    });
+    customerFilter.innerHTML = html.join("");
+
+    cachedCustomers = metaList.map(m=>m.name);
+    localStorage.setItem("allDesktopCustomers", JSON.stringify(cachedCustomers));
+
+    if(cachedCustomers.includes(savedCustomer)) customerFilter.value = savedCustomer;
+    else customerFilter.value = "All";
+  }
+
+  // load data (includes global sorting params)
+  async function loadPage(showLoading=true){
+    if(showLoading) tableBody.innerHTML=`<tr><td colspan="${colSpanCount()}" class="text-center text-muted py-4">Refreshing…</td></tr>`;
+    const params = new URLSearchParams({
+      page, per_page, q,
+      show_inactive: show_inactive?"true":"false",
+      customer: customerFilter.value||"All",
+      sort_by, order
+    });
+
+    try{
+      const res = await fetch(`/api/monitored-desktops?${params.toString()}`);
+      const data = await res.json();
+      if(!data.ok) throw new Error(data.error||"API returned error");
+
+      dataItems = data.items || [];
+      total_items = data.total || dataItems.length;
+      total_pages = data.pages || 1;
+
+      populateCustomersFromAPI(data.customers_meta || data.customers || []);
+
+      renderHead();
+      renderRows();
+      updateSortIndicators();
+
+      pageMeta.textContent = `Page ${page} of ${total_pages} • ${total_items} desktop(s)`;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = page >= total_pages;
+      refreshStatus.textContent = `Last refreshed: ${new Date().toLocaleString()}`;
+    } catch(err){
+      console.error(err);
+      tableBody.innerHTML=`<tr><td colspan="${colSpanCount()}" class="text-danger text-center py-4">Failed to load data</td></tr>`;
+      pageMeta.textContent="Error";
+    }
+  }
+
+  // VIEW toggle
+  function setView(v){
+    view=v; localStorage.setItem("desktopView", v);
+
+    if(v==="compact"){
+      compactBtn.classList.add("btn-primary"); compactBtn.classList.remove("btn-outline-primary");
+      detailedBtn.classList.add("btn-outline-primary"); detailedBtn.classList.remove("btn-primary");
+    } else {
+      detailedBtn.classList.add("btn-primary"); detailedBtn.classList.remove("btn-outline-primary");
+      compactBtn.classList.add("btn-outline-primary"); compactBtn.classList.remove("btn-primary");
+    }
+    renderHead(); renderRows();
+  }
+
+  // event listeners
+  compactBtn.addEventListener("click", ()=>setView("compact"));
+  detailedBtn.addEventListener("click", ()=>setView("detailed"));
+
+  customerFilter.addEventListener("change", ()=>{
+    savedCustomer = customerFilter.value;
+    localStorage.setItem("selectedDesktopCustomer", savedCustomer);
+    page = 1;
+    loadPage();
+  });
+
+  toggleInactive.addEventListener("change", ()=>{
+    show_inactive = toggleInactive.checked;
+    page = 1;
+    loadPage();
+  });
+
+  perPageSel.addEventListener("change", ()=>{ per_page = parseInt(perPageSel.value,10); page=1; loadPage(); });
+
+  prevBtn.addEventListener("click", ()=>{ if(page>1){ page--; loadPage(); } });
+  nextBtn.addEventListener("click", ()=>{ if(page<total_pages){ page++; loadPage(); } });
+
+  const onSearch = debounce((val)=>{ q = val.trim(); page=1; loadPage(); }, 400);
+  searchInput.addEventListener("input", (e)=> onSearch(e.target.value));
+
+  // initialize sort state from storage
+  sort_by = localStorage.getItem("desktop_sort_by") || sort_by;
+  order = localStorage.getItem("desktop_sort_order") || order;
+
+  // initial
+  setView(view);
+  customerFilter.value = savedCustomer || "All";
+  loadPage();
+
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(loadPage, 60000);
+});
+</script>
+
+{% endblock %}
+

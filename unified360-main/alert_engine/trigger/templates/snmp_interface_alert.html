@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SNMP Interface Alert</title>
+  <style>
+    body{font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f7f9fb;color:#111;margin:0;padding:20px}
+    .card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(15,23,42,0.06);max-width:680px;margin:0 auto;padding:20px}
+    h1{font-size:18px;margin:0 0 8px}
+    p.lead{margin:0 0 16px;color:#334155}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #eef2f7}
+    th{background:#fbfdff;font-weight:600;color:#0f172a}
+    .status{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:600}
+    .down{background:#fee2e2;color:#991b1b}
+    .up{background:#ecfdf5;color:#065f46}
+    .footer{font-size:13px;color:#64748b;margin-top:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚨 Interface Down: {{ hostname }} / {{ interface }}</h1>
+    <p class="lead">An interface on <strong>{{ hostname }}</strong> has been detected as <strong>DOWN</strong> (ifOperStatus = {{ metric_value }}) by rule <strong>{{ rule.name }}</strong>.</p>
+
+    <table>
+      <tr><th>Rule</th><td>{{ rule.name }} (ID: {{ rule.id }})</td></tr>
+      <tr><th>Host</th><td>{{ hostname }}</td></tr>
+      <tr><th>Interface</th><td>{{ interface }}</td></tr>
+      <tr><th>Metric</th><td>{{ metric_name }}</td></tr>
+      <tr><th>Value</th><td><span class="status down">DOWN ({{ metric_value }})</span></td></tr>
+      <tr><th>Detected at (IST)</th><td>{{ alert_time_ist }}</td></tr>
+      <tr><th>Evaluation threshold</th><td>{{ rule.evaluation_count }}</td></tr>
+    </table>
+
+    <div class="footer">
+      <p>What you can do next:</p>
+      <ul>
+        <li>Check the device for link issues or admin state.</li>
+        <li>Validate interface configuration and physical connectivity.</li>
+        <li>Review recent config changes or spanning-tree events.</li>
+      </ul>
+      <p>If you believe this is a false positive, please review the alert rule or increase the evaluation threshold.</p>
+    </div>
+  </div>
+</body>
+</html>

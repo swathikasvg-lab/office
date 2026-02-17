@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<link rel="stylesheet" href="{{ url_for('static', filename='dashboard2.css') }}">
+
+<div class="dashboard-wrapper">
+
+    <!-- HEADER + FILTERS -->
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="m-0">Enterprise Dashboard (NOC View)</h2>
+
+        <div>
+            <select id="limitSelect" class="form-select form-select-sm" style="width:90px; display:inline-block;">
+                <option value="50">Top 50</option>
+                <option value="100">Top 100</option>
+                <option value="200">Top 200</option>
+            </select>
+
+            <select id="refreshSelect" class="form-select form-select-sm" style="width:80px; display:inline-block; margin-left:8px;">
+                <option value="30">30s</option>
+                <option value="60">60s</option>
+                <option value="120">120s</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- NOC CRITICAL BANNER (only when criticals > 0) -->
+    <div id="nocCriticalBanner" class="noc-banner d-none"></div>
+
+    <!-- KPI GRID -->
+    <div id="kpiGrid" class="monitoring-grid mt-3"></div>
+
+    <!-- Templates for KPI cards (JS can clone these for consistent structure/classes) -->
+    <template id="kpiOverallHealthTpl">
+        <div class="kpi-card" id="kpiOverallHealth" data-kpi="overall_health">
+            <div class="kpi-icon">
+                <i data-lucide="heart-pulse"></i>
+            </div>
+            <div class="kpi-value" id="overallHealthValue">--</div>
+            <div class="kpi-label">
+                Overall Health %
+                <span class="health-pill" id="overallHealthPill">--</span>
+            </div>
+        </div>
+    </template>
+
+    <template id="kpiMonitorTileTpl">
+        <div class="kpi-card monitor-tile" data-kpi="">
+            <div class="kpi-icon">
+                <i data-lucide="activity"></i>
+            </div>
+            <div class="kpi-value">0/0</div>
+            <div class="kpi-label">
+                Monitor
+                <span class="status-pill">No Devices</span>
+            </div>
+        </div>
+    </template>
+
+    <hr class="my-4">
+
+    <!-- MAIN GRID (Servers Left + Alerts Right) -->
+    <div class="main-grid">
+
+        <!-- Server Customers -->
+        <div class="card-box">
+            <h3 class="mb-2">Server Monitoring</h3>
+            <div class="small text-muted mb-3">Servers grouped by CustomerName</div>
+
+            <div style="overflow:auto;">
+                <table class="enterprise-table" id="serversTable">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Total</th>
+                            <th>Active</th>
+                            <th>Down</th>
+                            <th>Health</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="card-box">
+            <h4 class="mb-2">Top 5 Recent Alerts</h4>
+            <div class="small text-muted mb-3" id="alertsUpdated">Updated: --</div>
+            <div id="alertsFeed"></div>
+        </div>
+    </div>
+
+    <!-- HEATMAP -->
+    <div id="heatmapWrap">
+        <h3>Overall Service Heatmap(24H)</h3>
+        <canvas id="heatmapCanvas"></canvas>
+        <div class="small text-muted text-end mt-2">
+            Green = Healthy • Red = Critical
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='dashboard2.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    lucide.createIcons();
+});
+</script>
+{% endblock %}
+

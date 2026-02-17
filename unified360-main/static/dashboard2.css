@@ -1,0 +1,463 @@
+/* ============================================================
+   DASHBOARD 2 — FULL NOC CSS (APPLE STYLE KPI + GRID)
+   ============================================================ */
+
+/* Remove Bootstrap width restriction */
+.container, .container-fluid {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Wrapper spacing */
+.dashboard-wrapper {
+    padding: 0 24px;
+}
+
+/* ============================================================
+   APPLE STYLE KPI GRID (Option B)
+   ============================================================ */
+
+.monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); 
+    gap: 14px;
+    margin-top: 10px;
+}
+
+/* KPI Tile — Apple Soft Card */
+.monitoring-grid .hover-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 0.9rem 0.7rem !important;
+    min-height: 105px !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    box-shadow:
+        0 1px 2px rgba(0,0,0,0.05),
+        0 4px 8px rgba(0,0,0,0.06);
+
+    transition: all 0.18s ease-in-out;
+}
+
+.monitoring-grid .hover-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 3px 6px rgba(0,0,0,0.08),
+        0 8px 16px rgba(0,0,0,0.10);
+}
+
+/* KPI Icons */
+.monitoring-grid .fs-1 i {
+    width: 26px !important;
+    height: 26px !important;
+    opacity: 0.85;
+}
+
+/* KPI Value */
+.monitoring-grid .hover-card h3 {
+    font-size: 1.20rem !important;
+    font-weight: 600;
+    margin: 0.3rem 0 0.15rem 0 !important;
+    letter-spacing: -0.3px;
+    display: flex;
+    gap: 4px;
+}
+
+/* KPI Label */
+.monitoring-grid .hover-card p {
+    font-size: 0.78rem !important;
+    color: #555;
+    margin: 0;
+}
+
+/* KPI Badges */
+.monitoring-grid .hover-card .badge {
+    font-size: 0.62rem !important;
+    padding: 0.15rem 0.35rem !important;
+    border-radius: 6px !important;
+    margin-left: 4px;
+}
+
+/* ============================================================
+   MAIN 2-COLUMN GRID (Server Customers + Alerts)
+   ============================================================ */
+
+.main-grid {
+    display: grid;
+    grid-template-columns: 1.7fr 1fr;
+    gap: 32px;
+    margin-top: 20px;
+}
+
+/* Section cards */
+.card-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* ============================================================
+   SERVER CUSTOMERS TABLE
+   ============================================================ */
+
+.enterprise-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.enterprise-table thead th {
+    background: #f8f9fa;
+    font-size: 14px;
+    padding: 12px;
+    color: #495057;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.enterprise-table tbody td {
+    padding: 14px 12px;
+    border-bottom: 1px solid #f1f3f5;
+    font-size: 15px;
+    color: #212529;
+}
+
+.health-pill {
+    padding: 6px 12px;
+    border-radius: 18px;
+    font-weight: 700;
+    font-size: 12px;
+    color: #fff;
+}
+
+.health-good  { background: #28a745; }
+.health-warn  { background: #ffc107; color: #212529; }
+.health-bad   { background: #dc3545; }
+
+.details-btn {
+    border: 1px solid #e9ecef;
+    background: #fff;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #0d6efd;
+}
+
+/* ============================================================
+   HEATMAP CARD
+   ============================================================ */
+
+#heatmapWrap {
+    background: #fff;
+    padding: 22px;
+    border-radius: 16px;
+    margin-top: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+#heatmapCanvas {
+    width: 100%;
+    height: 240px;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 1200px) {
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.hover-card h3 {
+    display: flex;
+    align-items: center;      /* vertically centers number + badge */
+    justify-content: center;  /* horizontally centers them */
+    gap: 6px;                 /* spacing between number and badge */
+}
+
+/* Better mobile stacking */
+@media (max-width: 576px) {
+  .alert-row { flex-direction: column; }
+  .alert-severity { min-width: auto; width: fit-content; }
+}
+
+/* ============================================================
+   RECENT ALERTS — ENTERPRISE DIGEST (Top 5, No Scroll)
+   Scopes everything under #alertsFeed so it won't affect other pages
+   ============================================================ */
+
+#alertsFeed .alerts-toolbar {
+  background: #fff;
+  padding: 8px 0 10px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  margin-bottom: 12px;
+}
+
+#alertsFeed .alerts-list {
+  max-height: none;      /* NO SCROLL */
+  overflow: visible;     /* NO SCROLL */
+  padding-right: 0;
+}
+
+#alertsFeed .alert-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 12px;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05);
+  margin-bottom: 10px;
+}
+
+#alertsFeed .alert-badge {
+  min-width: 52px;
+  height: 32px;
+  border-radius: 10px;
+  background: #c82333;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.3px;
+}
+
+#alertsFeed .alert-body { flex: 1; }
+
+#alertsFeed .alert-device {
+  font-weight: 600;      /* reduced bold */
+  font-size: 14.5px;
+  line-height: 1.2;
+}
+
+#alertsFeed .alert-type {
+  font-weight: 500;      /* reduced bold */
+  font-size: 13px;
+  color: rgba(0,0,0,0.56);
+  margin-top: 2px;
+}
+
+#alertsFeed .alert-meta {
+  font-size: 12px;
+  color: rgba(0,0,0,0.45);
+  margin-top: 3px;
+}
+
+@media (max-width: 576px) {
+  #alertsFeed .alert-row { flex-direction: column; }
+  #alertsFeed .alert-badge { width: fit-content; }
+}
+
+/* ============================================================
+   KPI: Active Criticals highlight (Big screen)
+   ============================================================ */
+
+.kpi-critical {
+  border: 2px solid rgba(200,35,51,0.25) !important;
+  box-shadow:
+    0 2px 10px rgba(200,35,51,0.10),
+    0 10px 22px rgba(200,35,51,0.08) !important;
+}
+
+.kpi-critical h3 {
+  font-size: 2rem !important;   /* bigger number */
+  font-weight: 600 !important;
+}
+
+.kpi-critical p {
+  font-weight: 600;
+}
+
+/* Pulse ONLY when >0 */
+.kpi-critical-pulse {
+  animation: critPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes critPulse {
+  0%   { box-shadow: 0 2px 10px rgba(200,35,51,0.10), 0 10px 22px rgba(200,35,51,0.08); }
+  50%  { box-shadow: 0 4px 18px rgba(200,35,51,0.22), 0 16px 34px rgba(200,35,51,0.18); }
+  100% { box-shadow: 0 2px 10px rgba(200,35,51,0.10), 0 10px 22px rgba(200,35,51,0.08); }
+}
+
+/* ============================================================
+   NOC Critical Banner (Big Screen)
+   ============================================================ */
+
+.noc-banner{
+  width: 100%;
+  border-radius: 16px;
+  padding: 12px 16px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  border: 1px solid rgba(200,35,51,0.22);
+  background: rgba(200,35,51,0.06);
+
+  box-shadow:
+    0 2px 10px rgba(200,35,51,0.10),
+    0 12px 26px rgba(200,35,51,0.08);
+}
+
+.noc-banner-left{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.noc-dot{
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #c82333;
+  box-shadow: 0 0 0 6px rgba(200,35,51,0.14);
+  animation: nocPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes nocPulse {
+  0%   { box-shadow: 0 0 0 6px rgba(200,35,51,0.14); }
+  50%  { box-shadow: 0 0 0 10px rgba(200,35,51,0.08); }
+  100% { box-shadow: 0 0 0 6px rgba(200,35,51,0.14); }
+}
+
+.noc-title{
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: #7a0f18;
+}
+
+.noc-sub{
+  font-size: 12.5px;
+  color: rgba(0,0,0,0.55);
+  margin-top: 1px;
+}
+
+.noc-count{
+  font-weight: 700;
+  font-size: 22px;
+  color: #c82333;
+  white-space: nowrap;
+}
+
+.noc-banner .btn{
+  white-space: nowrap;
+}
+
+/* ============================================================
+   KPI Enhancements
+   - Overall Health color (Green/Orange/Red)
+   - 0/0 tiles greyed / blurred ("Not configured")
+   ============================================================ */
+
+/* --- Overall Health card (traffic light) --- */
+.monitoring-grid .hover-card.kpi-overall-health {
+  border: 1px solid rgba(0,0,0,0.08);
+  transition: all 0.18s ease-in-out;
+}
+
+/* Green >= 90 */
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-good {
+  border-color: rgba(40, 167, 69, 0.45);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.05),
+    0 4px 8px rgba(0,0,0,0.06),
+    0 0 0 3px rgba(40, 167, 69, 0.10);
+}
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-good .fs-1 i {
+  color: #28a745;
+}
+
+/* Orange 50–89 */
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-warn {
+  border-color: rgba(255, 193, 7, 0.55);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.05),
+    0 4px 8px rgba(0,0,0,0.06),
+    0 0 0 3px rgba(255, 193, 7, 0.12);
+}
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-warn .fs-1 i {
+  color: #ffc107;
+}
+
+/* Red < 50 */
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-bad {
+  border-color: rgba(220, 53, 69, 0.55);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.05),
+    0 4px 8px rgba(0,0,0,0.06),
+    0 0 0 3px rgba(220, 53, 69, 0.12);
+}
+.monitoring-grid .hover-card.kpi-overall-health.kpi-health-bad .fs-1 i {
+  color: #dc3545;
+}
+
+/* Overall health pill next to the % */
+.monitoring-grid .overall-health-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.10rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.04);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* pill colors based on parent */
+.monitoring-grid .kpi-overall-health.kpi-health-good .overall-health-pill {
+  background: rgba(40, 167, 69, 0.12);
+  border-color: rgba(40, 167, 69, 0.25);
+}
+.monitoring-grid .kpi-overall-health.kpi-health-warn .overall-health-pill {
+  background: rgba(255, 193, 7, 0.14);
+  border-color: rgba(255, 193, 7, 0.30);
+}
+.monitoring-grid .kpi-overall-health.kpi-health-bad .overall-health-pill {
+  background: rgba(220, 53, 69, 0.12);
+  border-color: rgba(220, 53, 69, 0.28);
+}
+
+/* --- 0/0 monitor tiles (Not configured) --- */
+.monitoring-grid .hover-card.monitor-tile.kpi-zero {
+  opacity: 0.55;
+  filter: grayscale(1) blur(0.15px);
+  position: relative;
+}
+
+/* optional overlay label (in addition to badge in JS) */
+.monitoring-grid .hover-card.monitor-tile.kpi-zero::after {
+  content: "Not configured";
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.06);
+  border: 1px dashed rgba(0,0,0,0.18);
+}
+
+/* make zero tiles feel inactive on hover */
+.monitoring-grid .hover-card.monitor-tile.kpi-zero:hover {
+  transform: none;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.05),
+    0 4px 8px rgba(0,0,0,0.06);
+}
+

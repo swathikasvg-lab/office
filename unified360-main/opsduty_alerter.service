@@ -1,0 +1,13 @@
+[Unit]
+Description=OpsDuty Unified Alerting Server
+After=network-online.target
+
+[Service]
+ExecStart=/root/autointelli/bin/python /usr/local/autointelli/opsduty-server/alert_engine_service.py
+WorkingDirectory=/usr/local/autointelli/opsduty-server
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target

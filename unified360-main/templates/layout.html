@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Autointelli NMS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Dashboard2 CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard2.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='copilot.css') }}">
+</head>
+
+<body>
+  {% set IS_FULL_VIEWER =
+    not can("view_admin")
+    and not can("view_tools")
+    and not can("edit_alerts")
+    and not can("edit_urls")
+  %}
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <!-- DEBUG -->
+      <div class="logo-wrap">
+        <button class="toggle-btn" id="sidebarToggle">☰</button>
+        <div class="brand-text">Autointelli</div>
+      </div>
+
+      <nav class="menu">
+
+        <!-- MONITORING GROUP -->
+        {% if can("view_monitoring") %}
+        <div class="menu-group">
+          <div class="menu-title collapsible" data-target="monitoring-submenu">
+            <span class="title-left">
+              <i data-lucide="activity"></i> Monitoring
+            </span>
+            <span class="arrow">›</span>
+          </div>
+
+	  <div class="submenu" id="monitoring-submenu">
+
+            {# ---- show/hide section blocks only if at least 1 item is visible ---- #}
+            {% set show_hw  = can("view_idrac") or can("view_ilo") %}
+            {% set show_os  = can("view_servers") or can("view_desktops") %}
+            {% set show_db  = can("view_sqlserver") or can("view_oracle") %}
+            {% set show_net = can("view_snmp") or can("view_link") %}
+            {% set show_app = can("view_iis") %}
+            {% set show_syn = can("view_ports") or can("view_ping") or can("view_urls") %}
+          
+            <!-- ===================== Hardware ===================== -->
+            {% if show_hw %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-hw-submenu">
+                <span class="title-left">
+                  <i data-lucide="server"></i> Hardware
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-hw-submenu">
+                {% if can("view_idrac") %}
+                <a class="menu-link" href="{{ url_for('idrac.monitoring_idrac') }}">
+                  <i data-lucide="server"></i> iDRAC Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_ilo") %}
+                <a class="menu-link" href="{{ url_for('ilo.monitoring_ilo') }}">
+                  <i data-lucide="hard-drive"></i> HP iLO Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+            <!-- ===================== Operating System ===================== -->
+            {% if show_os %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-os-submenu">
+                <span class="title-left">
+                  <i data-lucide="cpu"></i> Operating System
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-os-submenu">
+                {% if can("view_servers") %}
+                <a class="menu-link" href="{{ url_for('server.monitoring_servers_page') }}">
+                  <i data-lucide="cpu"></i> Server Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_desktops") %}
+                <a class="menu-link" href="{{ url_for('desktop.monitoring_desktops_page') }}">
+                  <i data-lucide="monitor"></i> Desktop Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+            <!-- ===================== Database ===================== -->
+            {% if show_db %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-db-submenu">
+                <span class="title-left">
+                  <i data-lucide="database"></i> Database
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-db-submenu">
+                {% if can("view_sqlserver") %}
+                <a class="menu-link" href="{{ url_for('sqlserver.sqlserver_monitor_page') }}">
+                  <i data-lucide="database"></i> SQL Server Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_oracle") %}
+                <a class="menu-link" href="{{ url_for('oracle.oracle_monitor_page') }}">
+                  <i data-lucide="database"></i> Oracle DB Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+            <!-- ===================== Network ===================== -->
+            {% if show_net %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-net-submenu">
+                <span class="title-left">
+                  <i data-lucide="git-branch"></i> Network
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-net-submenu">
+                {% if can("view_snmp") %}
+                <a class="menu-link" href="{{ url_for('snmp.monitoring_snmp') }}">
+                  <i data-lucide="git-branch"></i> SNMP Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_link") %}
+                <a class="menu-link" href="{{ url_for('links.monitoring_link') }}">
+                  <i data-lucide="globe-2"></i> Link Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+            <!-- ===================== Application ===================== -->
+            {% if show_app %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-app-submenu">
+                <span class="title-left">
+                  <i data-lucide="app-window"></i> Application
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-app-submenu">
+                {% if can("view_iis") %}
+                <a class="menu-link" href="{{ url_for('iis.monitoring_iis_page') }}">
+                  <i data-lucide="globe"></i> IIS Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+            <!-- ===================== Synthetic ===================== -->
+            {% if show_syn %}
+            <div class="menu-group">
+              <div class="menu-title collapsible" data-target="monitoring-syn-submenu">
+                <span class="title-left">
+                  <i data-lucide="activity"></i> Synthetic
+                </span>
+                <span class="arrow">›</span>
+              </div>
+          
+              <div class="submenu nested" id="monitoring-syn-submenu">
+                {% if can("view_ports") %}
+                <a class="menu-link" href="{{ url_for('port.port_monitor_page') }}">
+                  <i data-lucide="plug"></i> Port Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_ping") %}
+                <a class="menu-link" href="{{ url_for('ping.monitoring_ping') }}">
+                  <i data-lucide="activity"></i> Ping Monitoring
+                </a>
+                {% endif %}
+          
+                {% if can("view_urls") %}
+                <a class="menu-link" href="{{ url_for('urls.monitoring_url') }}">
+                  <i data-lucide="link"></i> URL Monitoring
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          
+          </div>
+
+        </div>
+        {% endif %}
+
+        <!-- ENTERPRISE DASHBOARD -->
+        {% if can("view_monitoring") %}
+        <a class="menu-link" href="{{ url_for('dashboard.dashboard_enterprise') }}">
+          <i data-lucide="home"></i> Enterprise Dashboard
+        </a>
+        <a class="menu-link" href="{{ url_for('itom.applications_page') }}">
+          <i data-lucide="workflow"></i> ITOM Dashboard
+        </a>
+        {% endif %}
+
+        <!-- PROXY -->
+        {% if can("view_proxy") %}
+        <a class="menu-link" href="{{ url_for('proxy.proxy_servers_page') }}">
+          <i data-lucide="server"></i> Proxy Server Details
+        </a>
+        {% endif %}
+
+        <!-- REPORTS -->
+        {% if can("view_reports") %}
+        <a class="menu-link" href="{{ url_for('reports.report_config') }}">
+          <i data-lucide="file-text"></i> Monitoring Reports
+        </a>
+        {% endif %}
+
+        <!-- ALERTING -->
+        {% if can("view_alerts") %}
+        <div class="menu-group">
+          <div class="menu-title collapsible" data-target="alerting-submenu">
+            <span class="title-left">
+              <i data-lucide="bell"></i> Alerting
+            </span>
+            <span class="arrow">›</span>
+          </div>
+
+          <div class="submenu" id="alerting-submenu">
+            <a class="menu-link" href="{{ url_for('alerts_bp.alert_config') }}">
+              <i data-lucide="alert-circle"></i> Alert Rules
+            </a>
+
+            <a class="menu-link" href="{{ url_for('device_updown_bp.device_updown_page') }}">
+              <i data-lucide="power"></i> Device Up Down
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- TOOLS -->
+	{% if can("view_tools") and not IS_FULL_VIEWER %}
+        <div class="menu-group">
+          <div class="menu-title collapsible" data-target="tools-submenu">
+            <span class="title-left"><i data-lucide="wrench"></i> Tools</span>
+            <span class="arrow">›</span>
+          </div>
+        
+          <div class="submenu" id="tools-submenu">
+            <a class="menu-link" href="{{ url_for('tools.tools_page') }}">
+              <i data-lucide="terminal"></i> Network Tools
+            </a>
+        
+            {% if can("view_discovery") %}
+            <a class="menu-link" href="{{ url_for('discovery.discovery_page') }}">
+              <i data-lucide="radar"></i> Discovery
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+
+        <!-- ADMIN -->
+        {% if can("view_admin") %}
+        <div class="menu-group">
+          <div class="menu-title collapsible" data-target="administration-submenu">
+            <span class="title-left"><i data-lucide="settings"></i> Administration</span>
+            <span class="arrow">›</span>
+          </div>
+
+          <div class="submenu" id="administration-submenu">
+            <a class="menu-link" href="{{ url_for('smtp.smtp_config_page') }}">
+              <i data-lucide="mail"></i> SMTP Configuration
+            </a>
+
+            <a class="menu-link" href="{{ url_for('contacts_bp.contacts_page') }}">
+              <i data-lucide="users"></i> Contacts
+            </a>
+
+            <a class="menu-link" href="{{ url_for('contact_groups_bp.contact_groups_page') }}">
+              <i data-lucide="users"></i> Contact Groups
+            </a>
+
+            <a class="menu-link" href="{{ url_for('admin_users.users_page') }}">
+              <i data-lucide="user-cog"></i> Users
+            </a>
+
+            <a class="menu-link" href="{{ url_for('admin_users.roles_page') }}">
+              <i data-lucide="shield"></i> Roles
+            </a>
+
+            <a class="menu-link" href="{{ url_for('customers.customers_page') }}">
+              <i data-lucide="building-2"></i> Customer Management
+            </a>
+
+            {% if session.get('user', {}).get('is_superadmin') %}
+            <a class="menu-link" href="{{ url_for('license.licenses_page') }}">
+              <i data-lucide="key"></i> License Management
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+      </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      <header class="topbar">
+        <div class="right-slot">
+          <span class="username">
+            Hello, {{ session.get('user', {}).get('username', 'User') }}
+          </span>
+          <a class="btn btn-danger" href="{{ url_for('auth.logout') }}">Logout</a>
+        </div>
+      </header>
+
+      <section class="page">
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+
+  </div>
+
+  <!-- ================= GRAFANA MODAL ================= -->
+  <div class="modal fade" id="grafanaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i data-lucide="bar-chart-3"></i> Monitoring Dashboard
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body p-0" style="height:92vh;">
+          <iframe id="grafanaFrame"
+                  src=""
+                  style="width:100%; height:100%; border:0;"
+                  loading="lazy"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button id="copilotLauncher" type="button" class="btn btn-primary">
+    <i data-lucide="bot" width="16"></i> NOC Copilot
+  </button>
+
+  <div class="offcanvas offcanvas-end" tabindex="-1" id="copilotPanel" aria-labelledby="copilotPanelLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="copilotPanelLabel">
+        <i data-lucide="bot" width="16"></i> NOC Copilot (Ops + ITAM Agent)
+      </h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body p-0 d-flex flex-column">
+      <div id="copilotMessages"></div>
+      <div class="border-top p-2">
+        <div id="copilotSuggestions" class="mb-2"></div>
+        <form id="copilotForm" class="d-flex gap-2">
+          <input id="copilotInput" class="form-control" placeholder="Ask: overall summary / critical alerts / ITAM risk / app impact">
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='copilot.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    function openGrafanaModal(url, title) {
+      const modalEl = document.getElementById("grafanaModal");
+      const frame = document.getElementById("grafanaFrame");
+
+      modalEl.querySelector(".modal-title").innerHTML =
+        `<i data-lucide="bar-chart-3"></i> ${title || "Monitoring Dashboard"}`;
+
+      frame.src = url;
+
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+
+      modalEl.addEventListener("hidden.bs.modal", () => {
+        frame.src = "";
+      }, { once: true });
+
+      if (window.lucide) lucide.createIcons();
+    }
+  </script>
+
+  {% block scripts %}{% endblock %}
+
+  <script>
+    if (window.lucide) lucide.createIcons();
+  </script>
+</body>
+</html>
+
